@@ -92,12 +92,13 @@ class ConanCratesEntityProvider implements EntityProvider {
             );
             if (binRes.ok) {
               const binaries = (await binRes.json()) as Array<{
-                dependency_graph?: {
+                dependency_graph?: string | {
                   graph?: { nodes?: Record<string, { ref?: string }> };
                 };
               }>;
-              // Use first binary's dependency graph
-              const graph = binaries[0]?.dependency_graph;
+              // Use first binary's dependency graph (may be JSON string or object)
+              const rawGraph = binaries[0]?.dependency_graph;
+              const graph = typeof rawGraph === 'string' ? JSON.parse(rawGraph) : rawGraph;
               if (graph?.graph?.nodes) {
                 for (const [nodeId, node] of Object.entries(graph.graph.nodes)) {
                   if (nodeId === '0') continue; // skip root node
