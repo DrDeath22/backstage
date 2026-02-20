@@ -81,6 +81,42 @@ class ConanCratesEntityProvider implements EntityProvider {
           if (descMatch) description = descMatch[1];
         }
 
+        // Get dependencies from the conan dependency graph stored on binaries
+        const depNames = new Set<string>();
+        try {
+          const encodedRef = encodeURIComponent(entityRef);
+          const latestVersion = pkgVersions[0]?.version;
+          if (latestVersion) {
+            const binRes = await fetch(
+              `${this.baseUrl}/api/conancrates/packages/${encodedRef}/versions/${latestVersion}/binaries`,
+            );
+            if (binRes.ok) {
+              const binaries = (await binRes.json()) as Array<{
+                dependency_graph?: {
+                  graph?: { nodes?: Record<string, { ref?: string }> };
+                };
+              }>;
+              // Use first binary's dependency graph
+              const graph = binaries[0]?.dependency_graph;
+              if (graph?.graph?.nodes) {
+                for (const [nodeId, node] of Object.entries(graph.graph.nodes)) {
+                  if (nodeId === '0') continue; // skip root node
+                  if (node.ref) {
+                    const name = node.ref.split('/')[0];
+                    if (name && name !== packageName) {
+                      depNames.add(name);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch {
+          // Dependency fetch failed, continue without deps
+        }
+
+        const dependsOn = [...depNames].map(n => `component:default/${n}`);
+
         entities.push({
           apiVersion: 'backstage.io/v1alpha1',
           kind: 'Component',
@@ -101,6 +137,7 @@ class ConanCratesEntityProvider implements EntityProvider {
             type: 'conan-package',
             lifecycle: 'production',
             owner: 'conancrates',
+            ...(dependsOn.length > 0 ? { dependsOn } : {}),
           },
         });
       }
