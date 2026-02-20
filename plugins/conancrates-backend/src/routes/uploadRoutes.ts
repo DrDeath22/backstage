@@ -297,6 +297,32 @@ export function createUploadRoutes(
           dependency_graph: dependencyGraph,
         });
 
+        // Extract dependencies from the graph and store in dependencies table
+        const graphData = dependencyGraph as {
+          graph?: { nodes?: Record<string, { ref?: string; context?: string }> };
+        };
+        if (graphData?.graph?.nodes) {
+          for (const [nodeId, node] of Object.entries(graphData.graph.nodes)) {
+            if (nodeId === '0') continue; // skip root node
+            if (node.ref) {
+              const depName = node.ref.split('/')[0];
+              const depVersion = node.ref.split('/')[1] || '';
+              if (depName && depName !== packageName) {
+                const depEntityRef = `component:default/${depName}`;
+                const depType = node.context === 'build' ? 'build_requires'
+                  : node.context === 'test' ? 'test_requires'
+                  : 'requires';
+                await db.upsertDependency(
+                  pkgVersion.id,
+                  depEntityRef,
+                  depType,
+                  depVersion,
+                );
+              }
+            }
+          }
+        }
+
         res.status(201).json({
           status: 'success',
           message: `Package ${packageName}/${version} uploaded successfully`,
