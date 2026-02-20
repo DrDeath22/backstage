@@ -7,6 +7,7 @@ import { PackageVersion, BinaryPackage, Dependency, RegistryStats } from './type
 
 export interface ConancratesApi {
   getStats(): Promise<RegistryStats>;
+  getRecent(limit?: number): Promise<PackageVersion[]>;
   getVersions(entityRef: string): Promise<PackageVersion[]>;
   getVersion(entityRef: string, version: string): Promise<PackageVersion>;
   getBinaries(entityRef: string, version: string): Promise<BinaryPackage[]>;
@@ -51,6 +52,13 @@ export class ConancratesClient implements ConancratesApi {
     const url = `${await this.baseUrl()}/stats`;
     const res = await this.fetchApi.fetch(url);
     if (!res.ok) throw new Error(`Failed to fetch stats: ${res.statusText}`);
+    return res.json();
+  }
+
+  async getRecent(limit = 10): Promise<PackageVersion[]> {
+    const url = `${await this.baseUrl()}/recent?limit=${limit}`;
+    const res = await this.fetchApi.fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch recent: ${res.statusText}`);
     return res.json();
   }
 
