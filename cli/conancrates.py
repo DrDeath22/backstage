@@ -138,33 +138,51 @@ def find_recipe_file(cache_path):
 
 def find_readme_file(cache_path):
     """
-    Find README.md in the package's export source directory.
+    Find README.md in the package's Conan cache directories.
+
+    Conan 2 cache layout (relative to the package hash dir):
+        e/   = export (conanfile.py, conanmanifest.txt)
+        es/  = export source (original source tree)
+        s/   = source (possibly patched)
+        d/   = metadata
+
+    `conan cache path <ref>` returns the `e/` directory. We need to
+    also check sibling directories `es/` and `s/` where the actual
+    source code (and any README) lives.
 
     Args:
-        cache_path: Path to package in Conan cache
+        cache_path: Path to package in Conan cache (the `e/` directory)
 
     Returns:
         Path to README.md, or None if not found
     """
     cache_path = Path(cache_path)
 
-    # Check common locations (case-insensitive search)
-    for candidate in [
-        cache_path / 'README.md',
-        cache_path / 'readme.md',
-        cache_path / 'Readme.md',
-        cache_path / 'export_source' / 'README.md',
-        cache_path / 'export_source' / 'readme.md',
-        cache_path / 'src' / 'README.md',
-        cache_path / 'src' / 'readme.md',
-    ]:
-        if candidate.exists():
-            return candidate
+    # Build list of directories to search:
+    # 1. The cache_path itself (e/ directory)
+    # 2. Sibling directories: es/ (export source), s/ (source)
+    # 3. Parent directory (the package hash root)
+    search_dirs = [cache_path]
+    parent = cache_path.parent
+    for sibling in ['es', 's']:
+        sibling_dir = parent / sibling
+        if sibling_dir.exists() and sibling_dir.is_dir():
+            search_dirs.append(sibling_dir)
 
-    # Recursive search as fallback
-    for pattern in ['README.md', 'readme.md', 'Readme.md']:
-        for p in cache_path.rglob(pattern):
-            return p
+    readme_names = ['README.md', 'readme.md', 'Readme.md', 'README.rst', 'README.txt', 'README']
+
+    # Check top-level of each search directory first
+    for search_dir in search_dirs:
+        for name in readme_names:
+            candidate = search_dir / name
+            if candidate.exists():
+                return candidate
+
+    # Recursive search as fallback (only in source dirs, not export)
+    for search_dir in search_dirs:
+        for name in readme_names:
+            for p in search_dir.rglob(name):
+                return p
 
     return None
 
