@@ -178,13 +178,22 @@ def find_readme_file(cache_path):
             if candidate.exists():
                 return candidate
 
-    # Recursive search as fallback (only in source dirs, not export)
+    # Recursive search as fallback — prefer shallowest match
+    # to avoid picking up a vendored dependency's README over
+    # the project's own README one level down.
+    best = None
+    best_depth = float('inf')
     for search_dir in search_dirs:
         for name in readme_names:
             for p in search_dir.rglob(name):
-                return p
+                depth = len(p.relative_to(search_dir).parts)
+                if depth < best_depth:
+                    best = p
+                    best_depth = depth
+                    if depth == 1:
+                        return best  # can't get shallower, stop early
 
-    return None
+    return best
 
 
 def get_package_binaries(package_ref, profile):
