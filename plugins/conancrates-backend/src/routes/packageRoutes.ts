@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { DatabaseService } from '../service/DatabaseService';
+import { triggerCatalogRefresh } from '../catalogModule';
 
 /** Routes for browsing packages, versions, and binaries */
 export function createPackageRoutes(db: DatabaseService): Router {
@@ -96,6 +97,49 @@ export function createPackageRoutes(db: DatabaseService): Router {
         return;
       }
       res.json({ recipe_content: version.recipe_content });
+    },
+  );
+
+  // DELETE /packages/:entityRef/versions/:version - Delete a specific version
+  router.delete(
+    '/packages/:entityRef/versions/:version',
+    async (
+      req: Request<{ entityRef: string; version: string }>,
+      res: Response,
+    ) => {
+      try {
+        const entityRef = decodeURIComponent(req.params.entityRef);
+        const deleted = await db.deleteVersion(entityRef, req.params.version);
+        if (!deleted) {
+          res.status(404).json({ error: 'Version not found' });
+          return;
+        }
+        res.json({ status: 'ok', message: `Deleted ${entityRef} version ${req.params.version}` });
+        triggerCatalogRefresh().catch(() => {});
+      } catch (err) {
+        console.error('Delete version error:', err);
+        res.status(500).json({ error: String(err) });
+      }
+    },
+  );
+
+  // DELETE /packages/:entityRef - Delete all versions of a package
+  router.delete(
+    '/packages/:entityRef',
+    async (req: Request<{ entityRef: string }>, res: Response) => {
+      try {
+        const entityRef = decodeURIComponent(req.params.entityRef);
+        const count = await db.deletePackage(entityRef);
+        if (count === 0) {
+          res.status(404).json({ error: 'Package not found' });
+          return;
+        }
+        res.json({ status: 'ok', message: `Deleted ${count} version(s) of ${entityRef}` });
+        triggerCatalogRefresh().catch(() => {});
+      } catch (err) {
+        console.error('Delete package error:', err);
+        res.status(500).json({ error: String(err) });
+      }
     },
   );
 

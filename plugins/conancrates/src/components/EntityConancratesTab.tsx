@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useAsync } from 'react-use';
 import {
   Typography,
@@ -21,6 +21,12 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
   Link as MuiLink,
   makeStyles,
   createStyles,
@@ -33,6 +39,7 @@ import {
   Person as PersonIcon,
   Link as LinkIcon,
   Security as SecurityIcon,
+  Delete as DeleteIcon,
 } from '@material-ui/icons';
 import {
   InfoCard,
@@ -687,18 +694,50 @@ export function EntityConancratesTab() {
   const api = useApi(conancratesApiRef);
 
   const [selectedVersion, setSelectedVersion] = useState<string>('');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [deleteDialog, setDeleteDialog] = useState<'version' | 'package' | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const {
     value: versions,
     loading,
     error,
-  } = useAsync(() => api.getVersions(entityRef), [entityRef]);
+  } = useAsync(() => api.getVersions(entityRef), [entityRef, refreshKey]);
 
   React.useEffect(() => {
     if (versions && versions.length > 0 && !selectedVersion) {
       setSelectedVersion(versions[0].version);
     }
   }, [versions, selectedVersion]);
+
+  const handleDeleteVersion = useCallback(async () => {
+    if (!selectedVersion) return;
+    setDeleting(true);
+    try {
+      await api.deleteVersion(entityRef, selectedVersion);
+      setSelectedVersion('');
+      setRefreshKey(k => k + 1);
+    } catch (err) {
+      console.error('Delete version failed:', err);
+    } finally {
+      setDeleting(false);
+      setDeleteDialog(null);
+    }
+  }, [api, entityRef, selectedVersion]);
+
+  const handleDeletePackage = useCallback(async () => {
+    setDeleting(true);
+    try {
+      await api.deletePackage(entityRef);
+      setSelectedVersion('');
+      setRefreshKey(k => k + 1);
+    } catch (err) {
+      console.error('Delete package failed:', err);
+    } finally {
+      setDeleting(false);
+      setDeleteDialog(null);
+    }
+  }, [api, entityRef]);
 
   if (loading) return <Progress />;
   if (error) return <ResponseErrorPanel error={error} />;
@@ -715,47 +754,106 @@ export function EntityConancratesTab() {
   const currentVersion = versions.find(v => v.version === selectedVersion);
 
   return (
-    <Grid container spacing={3}>
-      <Grid item xs={12}>
-        <div className={classes.versionHeader}>
-          <div>
-            <Typography variant="h5">Package Registry</Typography>
-            {currentVersion?.description && (
-              <Typography
-                variant="body2"
-                color="textSecondary"
-                style={{ marginTop: 4 }}
+    <>
+      <Grid container spacing={3}>
+        <Grid item xs={12}>
+          <div className={classes.versionHeader}>
+            <div>
+              <Typography variant="h5">Package Registry</Typography>
+              {currentVersion?.description && (
+                <Typography
+                  variant="body2"
+                  color="textSecondary"
+                  style={{ marginTop: 4 }}
+                >
+                  {currentVersion.description}
+                </Typography>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <FormControl
+                variant="outlined"
+                size="small"
+                style={{ minWidth: 200 }}
               >
-                {currentVersion.description}
-              </Typography>
-            )}
+                <InputLabel>Version</InputLabel>
+                <Select
+                  value={selectedVersion}
+                  onChange={e => setSelectedVersion(e.target.value as string)}
+                  label="Version"
+                >
+                  {versions.map(v => (
+                    <MenuItem key={v.version} value={v.version}>
+                      {v.version}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Tooltip title="Delete this version">
+                <IconButton
+                  size="small"
+                  onClick={() => setDeleteDialog('version')}
+                  disabled={!selectedVersion}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Delete all versions">
+                <Button
+                  variant="outlined"
+                  color="secondary"
+                  size="small"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => setDeleteDialog('package')}
+                >
+                  Delete All
+                </Button>
+              </Tooltip>
+            </div>
           </div>
-          <FormControl
-            variant="outlined"
-            size="small"
-            style={{ minWidth: 200 }}
-          >
-            <InputLabel>Version</InputLabel>
-            <Select
-              value={selectedVersion}
-              onChange={e => setSelectedVersion(e.target.value as string)}
-              label="Version"
-            >
-              {versions.map(v => (
-                <MenuItem key={v.version} value={v.version}>
-                  {v.version}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </div>
+        </Grid>
+
+        {currentVersion && (
+          <Grid item xs={12}>
+            <VersionDetail entityRef={entityRef} version={currentVersion} />
+          </Grid>
+        )}
       </Grid>
 
-      {currentVersion && (
-        <Grid item xs={12}>
-          <VersionDetail entityRef={entityRef} version={currentVersion} />
-        </Grid>
-      )}
-    </Grid>
+      <Dialog
+        open={deleteDialog !== null}
+        onClose={() => setDeleteDialog(null)}
+      >
+        <DialogTitle>
+          {deleteDialog === 'package'
+            ? 'Delete All Versions?'
+            : `Delete Version ${selectedVersion}?`}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {deleteDialog === 'package'
+              ? 'This will permanently delete all versions, binaries, and dependencies for this package. This action cannot be undone.'
+              : `This will permanently delete version ${selectedVersion} and all its binaries and dependencies. This action cannot be undone.`}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialog(null)} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            onClick={
+              deleteDialog === 'package'
+                ? handleDeletePackage
+                : handleDeleteVersion
+            }
+            color="secondary"
+            variant="contained"
+            disabled={deleting}
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }

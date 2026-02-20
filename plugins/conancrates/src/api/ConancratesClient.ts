@@ -12,6 +12,8 @@ export interface ConancratesApi {
   getBinaries(entityRef: string, version: string): Promise<BinaryPackage[]>;
   getRecipe(entityRef: string, version: string): Promise<string>;
   getDependencies(entityRef: string, version: string): Promise<Dependency[]>;
+  deleteVersion(entityRef: string, version: string): Promise<void>;
+  deletePackage(entityRef: string): Promise<void>;
   getDownloadUrl(
     entityRef: string,
     version: string,
@@ -100,6 +102,20 @@ export class ConancratesClient implements ConancratesApi {
     if (!res.ok)
       throw new Error(`Failed to fetch dependencies: ${res.statusText}`);
     return res.json();
+  }
+
+  async deleteVersion(entityRef: string, version: string): Promise<void> {
+    const url = `${await this.baseUrl()}/packages/${this.encodeRef(entityRef)}/versions/${version}`;
+    const res = await this.fetchApi.fetch(url, { method: 'DELETE' });
+    if (!res.ok)
+      throw new Error(`Failed to delete version: ${res.statusText}`);
+  }
+
+  async deletePackage(entityRef: string): Promise<void> {
+    const url = `${await this.baseUrl()}/packages/${this.encodeRef(entityRef)}`;
+    const res = await this.fetchApi.fetch(url, { method: 'DELETE' });
+    if (!res.ok)
+      throw new Error(`Failed to delete package: ${res.statusText}`);
   }
 
   getDownloadUrl(

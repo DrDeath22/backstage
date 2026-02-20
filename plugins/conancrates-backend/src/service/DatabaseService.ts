@@ -128,6 +128,42 @@ export class DatabaseService {
     return binary;
   }
 
+  /** Delete a specific version and all its binaries and dependencies */
+  async deleteVersion(entityRef: string, version: string): Promise<boolean> {
+    const pkgVersion = await this.getVersion(entityRef, version);
+    if (!pkgVersion) return false;
+
+    // Delete dependencies, then binaries, then the version itself
+    await this.db('conancrates_dependencies')
+      .where({ package_version_id: pkgVersion.id })
+      .delete();
+    await this.db('conancrates_binary_packages')
+      .where({ package_version_id: pkgVersion.id })
+      .delete();
+    await this.db('conancrates_package_versions')
+      .where({ id: pkgVersion.id })
+      .delete();
+
+    return true;
+  }
+
+  /** Delete all versions (and their binaries/deps) for an entity */
+  async deletePackage(entityRef: string): Promise<number> {
+    const versions = await this.listVersions(entityRef);
+    for (const v of versions) {
+      await this.db('conancrates_dependencies')
+        .where({ package_version_id: v.id })
+        .delete();
+      await this.db('conancrates_binary_packages')
+        .where({ package_version_id: v.id })
+        .delete();
+    }
+    const deleted = await this.db('conancrates_package_versions')
+      .where({ entity_ref: entityRef })
+      .delete();
+    return deleted;
+  }
+
   // --- Dependencies ---
 
   async listDependencies(packageVersionId: number): Promise<Dependency[]> {
