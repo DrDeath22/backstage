@@ -63,6 +63,11 @@ class ConanCratesEntityProvider implements EntityProvider {
         topics?: string;
       }>;
 
+      this.logger.info(`Fetched ${versions.length} recent versions from API`);
+      for (const v of versions) {
+        this.logger.info(`  - ${v.entity_ref} @ ${v.version}`);
+      }
+
       // Group by entity ref to get unique packages
       const packageMap = new Map<string, typeof versions>();
       for (const v of versions) {
@@ -93,8 +98,11 @@ class ConanCratesEntityProvider implements EntityProvider {
         const license = latest?.license || '';
         const author = latest?.author || '';
         const homepage = latest?.homepage || '';
+        // Backstage tags must be lowercase, alphanumeric with hyphens
         const topics = latest?.topics
-          ? latest.topics.split(',').map(t => t.trim()).filter(Boolean)
+          ? latest.topics.split(',')
+              .map(t => t.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-'))
+              .filter(Boolean)
           : [];
 
         // Get dependencies from the conan dependency graph stored on binaries
@@ -134,18 +142,34 @@ class ConanCratesEntityProvider implements EntityProvider {
 
         const dependsOn = [...depNames].map(n => `component:default/${n}`);
 
+        // Sanitize name for Backstage catalog (lowercase, alphanumeric/hyphens/underscores/dots only)
+        const safeName = packageName.toLowerCase().replace(/[^a-z0-9._-]/g, '-');
+
+        // Owner must be a valid entity ref or simple string (no special chars)
+        const safeOwner = author
+          ? author.replace(/[^a-zA-Z0-9._-]/g, '-').toLowerCase()
+          : 'conancrates';
+
+        // Filter dependsOn to only include valid entity name refs
+        const safeDependsOn = dependsOn.filter(ref => {
+          const depName = ref.split('/').pop() || '';
+          return /^[a-zA-Z0-9._-]+$/.test(depName);
+        });
+
+        this.logger.info(`Registering entity: ${safeName} (original: ${packageName})`);
+
         entities.push({
           apiVersion: 'backstage.io/v1alpha1',
           kind: 'Component',
           metadata: {
-            name: packageName,
+            name: safeName,
             namespace: 'default',
             description,
             ...(topics.length > 0 ? { tags: topics } : {}),
             ...(homepage ? { links: [{ url: homepage, title: 'Homepage' }] } : {}),
             annotations: {
-              'backstage.io/managed-by-location': `conancrates:default/${packageName}`,
-              'backstage.io/managed-by-origin-location': `conancrates:default/${packageName}`,
+              'backstage.io/managed-by-location': `conancrates:default/${safeName}`,
+              'backstage.io/managed-by-origin-location': `conancrates:default/${safeName}`,
               'conancrates.io/managed': 'true',
               'conancrates.io/versions': pkgVersions
                 .map(v => v.version)
@@ -157,13 +181,16 @@ class ConanCratesEntityProvider implements EntityProvider {
           spec: {
             type: 'conan-package',
             lifecycle: 'production',
-            owner: author || 'conancrates',
-            ...(dependsOn.length > 0 ? { dependsOn } : {}),
+            owner: safeOwner,
+            ...(safeDependsOn.length > 0 ? { dependsOn: safeDependsOn } : {}),
           },
         });
       }
 
-      this.logger.info(`Applying mutation with ${entities.length} entities`);
+      this.logger.info(`Applying mutation with ${entities.length} entities:`);
+      for (const ent of entities) {
+        this.logger.info(`  -> ${ent.kind}:${ent.metadata.namespace}/${ent.metadata.name} (owner: ${(ent.spec as Record<string, unknown>)?.owner})`);
+      }
 
       await this.connection.applyMutation({
         type: 'full',
@@ -172,6 +199,8 @@ class ConanCratesEntityProvider implements EntityProvider {
           locationKey: 'conancrates:default',
         })),
       });
+
+      this.logger.info('Mutation applied successfully');
     } catch (e) {
       this.logger.error('Failed to refresh ConanCrates catalog entities', {
         error: e instanceof Error ? e.message : String(e),

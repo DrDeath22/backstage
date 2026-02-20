@@ -633,6 +633,7 @@ def cmd_upload(args):
     server_url = args.server or "http://localhost:7007"
     profile = args.profile
     with_deps = args.with_dependencies if hasattr(args, 'with_dependencies') else False
+    force = args.force if hasattr(args, 'force') else False
 
     print(f"ConanCrates Upload")
     print(f"{'='*60}")
@@ -640,6 +641,8 @@ def cmd_upload(args):
     print(f"Profile: {profile}")
     print(f"Server: {server_url}")
     print(f"Upload dependencies: {with_deps}")
+    if force:
+        print(f"Force re-upload: YES")
     print(f"{'='*60}")
 
     # Step 1: Get package cache path (recipe)
@@ -698,18 +701,22 @@ def cmd_upload(args):
     print(f"  ✓ All versions are release versions")
 
     # Step 5: Check which packages already exist on server
-    print("\n5. Checking server for existing packages...")
     existing_packages = []
     missing_packages = []
 
-    for pkg_ref, pkg_id in packages_to_upload:
-        print(f"  Checking {pkg_ref} ({pkg_id[:8]}...)...", end=' ')
-        if check_package_exists(server_url, pkg_ref, pkg_id):
-            print("EXISTS")
-            existing_packages.append((pkg_ref, pkg_id))
-        else:
-            print("NOT FOUND")
-            missing_packages.append((pkg_ref, pkg_id))
+    if force:
+        print("\n5. Skipping existence check (--force)")
+        missing_packages = list(packages_to_upload)
+    else:
+        print("\n5. Checking server for existing packages...")
+        for pkg_ref, pkg_id in packages_to_upload:
+            print(f"  Checking {pkg_ref} ({pkg_id[:8]}...)...", end=' ')
+            if check_package_exists(server_url, pkg_ref, pkg_id):
+                print("EXISTS")
+                existing_packages.append((pkg_ref, pkg_id))
+            else:
+                print("NOT FOUND")
+                missing_packages.append((pkg_ref, pkg_id))
 
     # Step 6: Show upload plan and ask for confirmation
     print(f"\n{'='*60}")
@@ -722,11 +729,13 @@ def cmd_upload(args):
             print(f"  - {pkg_ref} ({pkg_id[:8]}...)")
 
     if missing_packages:
-        print(f"\n↑ Will upload ({len(missing_packages)} binaries):")
+        action = "re-upload" if force and existing_packages else "upload"
+        print(f"\n↑ Will {action} ({len(missing_packages)} binaries):")
         for pkg_ref, pkg_id in missing_packages:
             print(f"  - {pkg_ref} ({pkg_id[:8]}...)")
     else:
         print(f"\n✓ All binaries already exist on server. Nothing to upload!")
+        print(f"  Use --force to re-upload existing packages.")
         return 0
 
     print(f"\n{'='*60}")
@@ -1670,6 +1679,11 @@ def main():
         '--no-rust',
         action='store_true',
         help='Skip Rust crate generation (by default, a Rust crate is generated)'
+    )
+    upload_parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Force re-upload even if packages already exist on server'
     )
 
     # Download command
