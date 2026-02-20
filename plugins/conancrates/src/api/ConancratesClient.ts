@@ -3,7 +3,7 @@ import {
   DiscoveryApi,
   FetchApi,
 } from '@backstage/core-plugin-api';
-import { PackageVersion, BinaryPackage, RegistryStats } from './types';
+import { PackageVersion, BinaryPackage, Dependency, RegistryStats } from './types';
 
 export interface ConancratesApi {
   getStats(): Promise<RegistryStats>;
@@ -11,6 +11,7 @@ export interface ConancratesApi {
   getVersion(entityRef: string, version: string): Promise<PackageVersion>;
   getBinaries(entityRef: string, version: string): Promise<BinaryPackage[]>;
   getRecipe(entityRef: string, version: string): Promise<string>;
+  getDependencies(entityRef: string, version: string): Promise<Dependency[]>;
   getDownloadUrl(
     entityRef: string,
     version: string,
@@ -88,6 +89,17 @@ export class ConancratesClient implements ConancratesApi {
       throw new Error(`Failed to fetch recipe: ${res.statusText}`);
     const data = await res.json();
     return data.recipe_content;
+  }
+
+  async getDependencies(
+    entityRef: string,
+    version: string,
+  ): Promise<Dependency[]> {
+    const url = `${await this.baseUrl()}/packages/${this.encodeRef(entityRef)}/versions/${version}/dependencies`;
+    const res = await this.fetchApi.fetch(url);
+    if (!res.ok)
+      throw new Error(`Failed to fetch dependencies: ${res.statusText}`);
+    return res.json();
   }
 
   getDownloadUrl(

@@ -26,9 +26,11 @@ export async function triggerCatalogRefresh(): Promise<void> {
 class ConanCratesEntityProvider implements EntityProvider {
   private connection?: EntityProviderConnection;
   private readonly baseUrl: string;
-  private readonly logger: { info: (msg: string) => void; error: (msg: string, meta?: Record<string, unknown>) => void };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private readonly logger: any;
 
-  constructor(baseUrl: string, logger: { info: (msg: string) => void; error: (msg: string, meta?: Record<string, unknown>) => void }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(baseUrl: string, logger: any) {
     this.baseUrl = baseUrl;
     this.logger = logger;
   }
@@ -54,6 +56,11 @@ class ConanCratesEntityProvider implements EntityProvider {
         entity_ref: string;
         version: string;
         recipe_content: string;
+        description?: string;
+        license?: string;
+        author?: string;
+        homepage?: string;
+        topics?: string;
       }>;
 
       // Group by entity ref to get unique packages
@@ -71,15 +78,24 @@ class ConanCratesEntityProvider implements EntityProvider {
         if (!match) continue;
         const packageName = match[1];
 
-        // Parse description from the latest recipe
-        let description = `Conan package: ${packageName}`;
         const latest = pkgVersions[0];
-        if (latest?.recipe_content) {
+
+        // Use stored metadata columns, fall back to regex parsing for old data
+        let description = latest?.description || '';
+        if (!description && latest?.recipe_content) {
           const descMatch = latest.recipe_content.match(
             /description\s*=\s*["']([^"']+)["']/,
           );
           if (descMatch) description = descMatch[1];
         }
+        if (!description) description = `Conan package: ${packageName}`;
+
+        const license = latest?.license || '';
+        const author = latest?.author || '';
+        const homepage = latest?.homepage || '';
+        const topics = latest?.topics
+          ? latest.topics.split(',').map(t => t.trim()).filter(Boolean)
+          : [];
 
         // Get dependencies from the conan dependency graph stored on binaries
         const depNames = new Set<string>();
@@ -100,7 +116,7 @@ class ConanCratesEntityProvider implements EntityProvider {
               const rawGraph = binaries[0]?.dependency_graph;
               const graph = typeof rawGraph === 'string' ? JSON.parse(rawGraph) : rawGraph;
               if (graph?.graph?.nodes) {
-                for (const [nodeId, node] of Object.entries(graph.graph.nodes)) {
+                for (const [nodeId, node] of Object.entries(graph.graph.nodes as Record<string, { ref?: string }>)) {
                   if (nodeId === '0') continue; // skip root node
                   if (node.ref) {
                     const name = node.ref.split('/')[0];
@@ -125,6 +141,8 @@ class ConanCratesEntityProvider implements EntityProvider {
             name: packageName,
             namespace: 'default',
             description,
+            ...(topics.length > 0 ? { tags: topics } : {}),
+            ...(homepage ? { links: [{ url: homepage, title: 'Homepage' }] } : {}),
             annotations: {
               'backstage.io/managed-by-location': `conancrates:default/${packageName}`,
               'backstage.io/managed-by-origin-location': `conancrates:default/${packageName}`,
@@ -132,12 +150,14 @@ class ConanCratesEntityProvider implements EntityProvider {
               'conancrates.io/versions': pkgVersions
                 .map(v => v.version)
                 .join(', '),
+              ...(license ? { 'conancrates.io/license': license } : {}),
+              ...(author ? { 'conancrates.io/author': author } : {}),
             },
           },
           spec: {
             type: 'conan-package',
             lifecycle: 'production',
-            owner: 'conancrates',
+            owner: author || 'conancrates',
             ...(dependsOn.length > 0 ? { dependsOn } : {}),
           },
         });

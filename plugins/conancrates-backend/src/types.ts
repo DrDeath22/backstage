@@ -10,6 +10,20 @@ export interface PackageVersion {
   uploaded_by: string | null;
   created_at: string;
   updated_at: string;
+  description: string;
+  license: string;
+  author: string;
+  homepage: string;
+  topics: string;
+  readme_content: string;
+  security_notes: string;
+}
+
+export interface SecurityNote {
+  cve: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  description: string;
+  url?: string;
 }
 
 /** Mirrors Django BinaryPackage model */

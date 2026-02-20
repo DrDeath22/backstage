@@ -136,6 +136,39 @@ def find_recipe_file(cache_path):
     return None
 
 
+def find_readme_file(cache_path):
+    """
+    Find README.md in the package's export source directory.
+
+    Args:
+        cache_path: Path to package in Conan cache
+
+    Returns:
+        Path to README.md, or None if not found
+    """
+    cache_path = Path(cache_path)
+
+    # Check common locations (case-insensitive search)
+    for candidate in [
+        cache_path / 'README.md',
+        cache_path / 'readme.md',
+        cache_path / 'Readme.md',
+        cache_path / 'export_source' / 'README.md',
+        cache_path / 'export_source' / 'readme.md',
+        cache_path / 'src' / 'README.md',
+        cache_path / 'src' / 'readme.md',
+    ]:
+        if candidate.exists():
+            return candidate
+
+    # Recursive search as fallback
+    for pattern in ['README.md', 'readme.md', 'Readme.md']:
+        for p in cache_path.rglob(pattern):
+            return p
+
+    return None
+
+
 def get_package_binaries(package_ref, profile):
     """
     Get the binary package ID for a package using a specific profile.
@@ -344,7 +377,7 @@ def extract_dependencies_from_graph(dependency_graph):
     return dependencies
 
 
-def upload_package(server_url, recipe_path, binary_path, package_ref, package_id=None, dependency_graph=None, rust_crate_path=None):
+def upload_package(server_url, recipe_path, binary_path, package_ref, package_id=None, dependency_graph=None, rust_crate_path=None, readme_path=None):
     """
     Upload package to ConanCrates server.
 
@@ -356,6 +389,7 @@ def upload_package(server_url, recipe_path, binary_path, package_ref, package_id
         package_id: Real Conan package_id (optional, recommended)
         dependency_graph: Dependency graph dict from conan graph info (optional, recommended)
         rust_crate_path: Path to .crate file (optional)
+        readme_path: Path to README.md file (optional)
 
     Returns:
         True if successful, False otherwise
@@ -387,6 +421,12 @@ def upload_package(server_url, recipe_path, binary_path, package_ref, package_id
                 file_handles.append(rust_crate_file)
                 files['rust_crate'] = (Path(rust_crate_path).name, rust_crate_file, 'application/gzip')
 
+            # Add README if available
+            if readme_path and Path(readme_path).exists():
+                readme_file_handle = open(readme_path, 'rb')
+                file_handles.append(readme_file_handle)
+                files['readme'] = ('README.md', readme_file_handle, 'text/markdown')
+
             data = {
                 'package_name': package_name,
                 'version': version,
@@ -402,6 +442,8 @@ def upload_package(server_url, recipe_path, binary_path, package_ref, package_id
             print(f"  Binary: {binary_path}")
             if rust_crate_path:
                 print(f"  Rust Crate: {rust_crate_path}")
+            if readme_path:
+                print(f"  README: {readme_path}")
             print(f"  Conan version: {conan_version}")
             if package_id:
                 print(f"  Package ID: {package_id}")
@@ -466,6 +508,11 @@ def upload_single_package(server_url, package_ref, profile, package_id=None):
     if not recipe_path:
         print(f"  Error: Could not find conanfile.py in {cache_path}")
         return 1
+
+    # Find README
+    readme_path = find_readme_file(cache_path)
+    if readme_path:
+        print(f"  Found README: {readme_path}")
 
     # If package_id is provided (e.g., from dependency graph), use it directly
     # Otherwise, use profile to determine which binary to upload
@@ -572,7 +619,7 @@ def upload_single_package(server_url, package_ref, profile, package_id=None):
 
         # Upload
         print(f"  Uploading to server...", flush=True)
-        if upload_package(server_url, recipe_path, tarball_path, package_ref, package_id=package_id, dependency_graph=dependency_graph, rust_crate_path=rust_crate_path):
+        if upload_package(server_url, recipe_path, tarball_path, package_ref, package_id=package_id, dependency_graph=dependency_graph, rust_crate_path=rust_crate_path, readme_path=readme_path):
             print(f"  ✓ Upload completed successfully", flush=True)
             return 0
         else:

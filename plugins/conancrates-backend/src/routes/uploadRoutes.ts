@@ -17,6 +17,9 @@ function parseConanfile(recipeContent: string): {
   version: string | null;
   description: string;
   license: string;
+  author: string;
+  homepage: string;
+  topics: string[];
   dependencies: string[];
 } {
   const metadata = {
@@ -24,6 +27,9 @@ function parseConanfile(recipeContent: string): {
     version: null as string | null,
     description: '',
     license: 'Unknown',
+    author: '',
+    homepage: '',
+    topics: [] as string[],
     dependencies: [] as string[],
   };
 
@@ -38,6 +44,27 @@ function parseConanfile(recipeContent: string): {
 
   const licenseMatch = recipeContent.match(/license\s*=\s*["']([^"']+)["']/);
   if (licenseMatch) metadata.license = licenseMatch[1];
+
+  const authorMatch = recipeContent.match(/author\s*=\s*["']([^"']+)["']/);
+  if (authorMatch) metadata.author = authorMatch[1];
+
+  // Conan uses both 'homepage' and 'url'
+  const homepageMatch = recipeContent.match(/homepage\s*=\s*["']([^"']+)["']/);
+  if (homepageMatch) {
+    metadata.homepage = homepageMatch[1];
+  } else {
+    const urlMatch = recipeContent.match(/url\s*=\s*["']([^"']+)["']/);
+    if (urlMatch) metadata.homepage = urlMatch[1];
+  }
+
+  // Topics can be tuple, list, or set in Python
+  const topicsMatch = recipeContent.match(/topics\s*=\s*[(\[{](.*?)[)\]}]/s);
+  if (topicsMatch) {
+    const items = topicsMatch[1].match(/["']([^"']+)["']/g);
+    if (items) {
+      metadata.topics = items.map(t => t.replace(/["']/g, ''));
+    }
+  }
 
   const requiresMatch = recipeContent.match(
     /requires\s*=\s*\[(.*?)\]/s,
@@ -140,6 +167,7 @@ export function createUploadRoutes(
       { name: 'recipe', maxCount: 1 },
       { name: 'binary', maxCount: 1 },
       { name: 'rust_crate', maxCount: 1 },
+      { name: 'readme', maxCount: 1 },
     ]),
     async (req: Request, res: Response) => {
       try {
@@ -176,9 +204,8 @@ export function createUploadRoutes(
           return;
         }
 
-        // Parse conanfile for metadata (description, license, deps)
-        // Currently used for future dependency tracking
-        parseConanfile(recipeContent);
+        // Parse conanfile for metadata
+        const parsedMeta = parseConanfile(recipeContent);
         const conanSettings = extractConaninfo(binaryFile.buffer);
 
         // Entity ref for linking to catalog
@@ -186,11 +213,21 @@ export function createUploadRoutes(
 
         const conanVersion = req.body.conan_version || 'unknown';
 
-        // Upsert version
+        // Read readme from uploaded file field (if present)
+        const readmeFile = files.readme?.[0];
+        const readmeContent = readmeFile ? readmeFile.buffer.toString('utf-8') : '';
+
+        // Upsert version with parsed metadata
         const pkgVersion = await db.upsertVersion(entityRef, version, {
           recipe_content: recipeContent,
           conan_version: conanVersion,
           uploaded_by: req.body.uploaded_by || null,
+          description: parsedMeta.description,
+          license: parsedMeta.license,
+          author: parsedMeta.author,
+          homepage: parsedMeta.homepage,
+          topics: parsedMeta.topics.join(','),
+          readme_content: readmeContent,
         });
 
         // Get or generate package_id
