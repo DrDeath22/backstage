@@ -989,8 +989,8 @@ export function EntityConancratesTab() {
     if (versions && versions.length > 0 && !selectedVersion) {
       const params = new URLSearchParams(window.location.search);
       const versionParam = params.get('version');
-      const match = versionParam && versions.find(v => v.version === versionParam);
-      setSelectedVersion(match ? versionParam : versions[0].version);
+      const match = versionParam ? versions.find(v => v.version === versionParam) : undefined;
+      setSelectedVersion(match ? match.version : versions[0].version);
     }
   }, [versions, selectedVersion]);
 
