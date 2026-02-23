@@ -197,7 +197,7 @@ def find_readme_file(cache_path):
     return best
 
 
-def get_package_binaries(package_ref, profile, options=None, settings=None):
+def get_package_binaries(package_ref, profile, options=None, settings=None, lockfile=None):
     """
     Get the binary package ID for a package using a specific profile.
 
@@ -206,6 +206,7 @@ def get_package_binaries(package_ref, profile, options=None, settings=None):
         profile: Conan profile name or path (REQUIRED - no default)
         options: List of option strings like ["zlib:shared=True"]
         settings: List of setting strings like ["build_type=Debug"]
+        lockfile: Path to a conan.lock file (pins dependency versions to match the build)
 
     Returns:
         List containing the package ID that matches the profile settings
@@ -226,6 +227,8 @@ def get_package_binaries(package_ref, profile, options=None, settings=None):
         cmd += ['-o', opt]
     for s in (settings or []):
         cmd += ['-s', s]
+    if lockfile:
+        cmd += ['--lockfile', lockfile]
     output = run_conan_command(cmd)
     if not output:
         return []
@@ -268,7 +271,7 @@ def get_binary_package_path(package_ref, package_id):
     return None
 
 
-def get_dependency_graph(package_ref, package_id, cache_path, profile, options=None, settings=None):
+def get_dependency_graph(package_ref, package_id, cache_path, profile, options=None, settings=None, lockfile=None):
     """
     Get the full dependency graph for a package using conan graph info.
 
@@ -279,6 +282,7 @@ def get_dependency_graph(package_ref, package_id, cache_path, profile, options=N
         profile: Conan profile name or path (REQUIRED - no default)
         options: List of option strings like ["zlib:shared=True"]
         settings: List of setting strings like ["build_type=Debug"]
+        lockfile: Path to a conan.lock file (pins dependency versions to match the build)
 
     Returns:
         Dict with graph data, or None if failed
@@ -295,6 +299,8 @@ def get_dependency_graph(package_ref, package_id, cache_path, profile, options=N
         cmd += ['-o', opt]
     for s in (settings or []):
         cmd += ['-s', s]
+    if lockfile:
+        cmd += ['--lockfile', lockfile]
 
     output = run_conan_command(cmd)
     if output:
@@ -540,7 +546,7 @@ def upload_package(server_url, recipe_path, binary_path, package_ref, package_id
         return False
 
 
-def upload_single_package(server_url, package_ref, profile, package_id=None, options=None, settings=None):
+def upload_single_package(server_url, package_ref, profile, package_id=None, options=None, settings=None, lockfile=None):
     """
     Upload a single package to MISO.
 
@@ -551,6 +557,7 @@ def upload_single_package(server_url, package_ref, profile, package_id=None, opt
         package_id: Specific package ID to upload (optional, will be determined from profile if not specified)
         options: List of Conan option strings like ["zlib:shared=True"]
         settings: List of Conan setting strings like ["build_type=Debug"]
+        lockfile: Path to a conan.lock file (pins dependency versions to match the build)
 
     Returns:
         0 on success, 1 on failure
@@ -603,7 +610,7 @@ def upload_single_package(server_url, package_ref, profile, package_id=None, opt
         print(f"  Using package_id from dependency graph: {package_id[:8]}...", flush=True)
     else:
         # Main package case: use profile to find the binary
-        package_ids = get_package_binaries(package_ref, profile, options=options, settings=settings)
+        package_ids = get_package_binaries(package_ref, profile, options=options, settings=settings, lockfile=lockfile)
         if not package_ids:
             print(f"  Error: No binary packages found for {package_ref} with profile {profile}")
 
@@ -642,7 +649,7 @@ def upload_single_package(server_url, package_ref, profile, package_id=None, opt
 
     # Get dependency graph with profile
     print(f"  Getting dependency graph...", flush=True)
-    dependency_graph = get_dependency_graph(package_ref, package_id, cache_path, profile, options=options, settings=settings)
+    dependency_graph = get_dependency_graph(package_ref, package_id, cache_path, profile, options=options, settings=settings, lockfile=lockfile)
     if dependency_graph and 'graph' in dependency_graph:
         dep_count = len(dependency_graph['graph'].get('nodes', {})) - 1  # -1 for main package
         if dep_count > 0:
@@ -700,6 +707,7 @@ def cmd_upload(args):
     force = args.force if hasattr(args, 'force') else False
     options = args.options if hasattr(args, 'options') and args.options else []
     settings = args.settings if hasattr(args, 'settings') and args.settings else []
+    lockfile = args.lockfile if hasattr(args, 'lockfile') and args.lockfile else None
 
     print(f"MISO Upload")
     print(f"{'='*60}")
@@ -709,6 +717,8 @@ def cmd_upload(args):
         print(f"Options: {', '.join(options)}")
     if settings:
         print(f"Settings: {', '.join(settings)}")
+    if lockfile:
+        print(f"Lockfile: {lockfile}")
     print(f"Server: {server_url}")
     print(f"Upload dependencies: {with_deps}")
     if force:
@@ -725,7 +735,7 @@ def cmd_upload(args):
 
     # Step 2: Find binary packages
     print("\n2. Finding binary packages...")
-    package_ids = get_package_binaries(package_ref, profile=profile, options=options, settings=settings)
+    package_ids = get_package_binaries(package_ref, profile=profile, options=options, settings=settings, lockfile=lockfile)
     if not package_ids:
         print(f"Error: No binary packages found for {package_ref} with profile {profile}")
         return 1
@@ -735,7 +745,7 @@ def cmd_upload(args):
 
     # Step 3: Get dependency graph
     print("\n3. Analyzing dependencies...")
-    dependency_graph = get_dependency_graph(package_ref, package_id, cache_path, profile=profile, options=options, settings=settings)
+    dependency_graph = get_dependency_graph(package_ref, package_id, cache_path, profile=profile, options=options, settings=settings, lockfile=lockfile)
 
     # packages_to_upload is now a list of (package_ref, package_id) tuples
     packages_to_upload = [(package_ref, package_id)]
@@ -835,7 +845,7 @@ def cmd_upload(args):
     for idx, (pkg_ref, pkg_id) in enumerate(missing_packages, 1):
         print(f"\n📦 [{idx}/{total_to_upload}] Uploading {pkg_ref} ({pkg_id[:8]}...)...", flush=True)
 
-        result = upload_single_package(server_url, pkg_ref, profile, package_id=pkg_id, options=options, settings=settings)
+        result = upload_single_package(server_url, pkg_ref, profile, package_id=pkg_id, options=options, settings=settings, lockfile=lockfile)
 
         if result == 0:
             uploaded_count += 1
@@ -1771,6 +1781,12 @@ def main():
         metavar='SETTING',
         dest='settings',
         help='Conan settings overrides (e.g., -s build_type=Debug). Can be repeated.'
+    )
+    upload_parser.add_argument(
+        '-l', '--lockfile',
+        metavar='PATH',
+        dest='lockfile',
+        help='Path to conan.lock file (pins dependency versions to match the exact build)'
     )
 
     # Download command
