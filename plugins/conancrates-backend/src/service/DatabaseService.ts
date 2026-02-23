@@ -99,7 +99,9 @@ export class DatabaseService {
       serialized.options = JSON.stringify(serialized.options);
     }
 
-    const existing = await this.getBinary(packageId);
+    const existing = await this.db('conancrates_binary_packages')
+      .where({ package_version_id: packageVersionId, package_id: packageId })
+      .first();
     if (existing) {
       await this.db('conancrates_binary_packages')
         .where({ id: existing.id })
