@@ -598,7 +598,7 @@ function DepGraphSvg({ nodes, edges }: { nodes: GraphNode[]; edges: GraphEdge[] 
           const color = nodeColor(node);
           const label = node.name.length > 16 ? `${node.name.slice(0, 14)}…` : node.name;
           const ver = node.version.length > 12 ? `${node.version.slice(0, 10)}…` : node.version;
-          const href = node.isRoot ? undefined : `/catalog/default/component/${node.name}?version=${encodeURIComponent(node.version)}`;
+          const href = node.isRoot ? undefined : `/catalog/default/component/${node.name}`;
           const content = (
             <g key={node.id} transform={`translate(${x}, ${y})`} style={{ cursor: href ? 'pointer' : 'default' }}>
               <rect
@@ -985,19 +985,11 @@ export function EntityConancratesTab() {
     error,
   } = useAsync(() => api.getVersions(entityRef), [entityRef, refreshKey]);
 
-  // Single effect: whenever the entity or versions list changes, pick the right version.
-  // Using a ref to track the last entityRef we selected a version for, so we re-select
-  // whenever the entity changes (even if selectedVersion is already set from a prior entity).
-  const selectedForRef = React.useRef<string>('');
   React.useEffect(() => {
-    if (!versions || versions.length === 0) return;
-    // Re-select whenever entity changes or we haven't selected yet for this entity.
-    if (selectedForRef.current === entityRef && selectedVersion) return;
-    selectedForRef.current = entityRef;
-    const urlVersion = new URLSearchParams(window.location.search).get('version') ?? '';
-    const match = urlVersion ? versions.find(v => v.version === urlVersion) : undefined;
-    setSelectedVersion(match ? match.version : versions[0].version);
-  }, [entityRef, versions, selectedVersion]);
+    if (versions && versions.length > 0 && !selectedVersion) {
+      setSelectedVersion(versions[0].version);
+    }
+  }, [versions, selectedVersion]);
 
   const handleDeleteVersion = useCallback(async () => {
     if (!selectedVersion) return;
