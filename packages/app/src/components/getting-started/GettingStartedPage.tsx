@@ -66,6 +66,15 @@ python miso.py upload mylib/1.0.0 -pr default --force
 
 # Skip Rust crate generation
 python miso.py upload mylib/1.0.0 -pr default --no-rust
+
+# Upload with package options (e.g., shared library build)
+python miso.py upload zlib/1.3.1 -pr default -o zlib:shared=True
+
+# Override a Conan setting (e.g., Debug build)
+python miso.py upload mylib/1.0.0 -pr default -s build_type=Debug
+
+# Combine options and settings
+python miso.py upload mylib/1.0.0 -pr default -o mylib:with_tests=False -s build_type=Release
 \`\`\`
 
 ### What gets uploaded
@@ -165,9 +174,18 @@ The generated crate includes a \`build.rs\` that links against the C++ library a
 | \`upload <ref> -pr <profile> --with-dependencies\` | Upload package and all its dependencies |
 | \`upload <ref> -pr <profile> --force\` | Force re-upload, overwriting existing data |
 | \`upload <ref> -pr <profile> --no-rust\` | Upload without generating a Rust crate |
+| \`upload <ref> -pr <profile> -o pkg:opt=val\` | Upload with a specific package option |
+| \`upload <ref> -pr <profile> -s build_type=Debug\` | Upload with a settings override |
 | \`download <ref> -pr <profile>\` | Download package + dependencies as ZIP |
 | \`download <ref> -pr <profile> --crates\` | Download Rust crates instead |
 | \`generate-rust-crate <ref> -pr <profile>\` | Generate a Rust \`-sys\` crate locally |
+
+### Upload options
+
+| Option | Description |
+|--------|-------------|
+| \`-o / --options OPTION\` | Conan package option (e.g., \`-o zlib:shared=True\`). Repeatable. |
+| \`-s / --settings SETTING\` | Conan setting override (e.g., \`-s build_type=Debug\`). Repeatable. |
 
 ### Global options
 

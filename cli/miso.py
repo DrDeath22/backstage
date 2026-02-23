@@ -4,12 +4,13 @@
 MISO CLI tool
 
 Usage:
-    conancrates upload <package_ref>
-    conancrates download <package_ref>
+    miso.py upload <package_ref> -pr <profile>
+    miso.py download <package_ref> -pr <profile>
 
 Example:
-    conancrates upload boost/1.81.0
-    conancrates download testlib/1.0.0
+    miso.py upload boost/1.81.0 -pr default
+    miso.py upload zlib/1.3.1 -pr default -o zlib:shared=True -s build_type=Debug
+    miso.py download testlib/1.0.0 -pr default
 
 This tool:
 - Upload: Finds package in Conan cache, creates tarball, uploads to MISO
@@ -196,13 +197,15 @@ def find_readme_file(cache_path):
     return best
 
 
-def get_package_binaries(package_ref, profile):
+def get_package_binaries(package_ref, profile, options=None, settings=None):
     """
     Get the binary package ID for a package using a specific profile.
 
     Args:
         package_ref: Package reference like "boost/1.81.0"
         profile: Conan profile name or path (REQUIRED - no default)
+        options: List of option strings like ["zlib:shared=True"]
+        settings: List of setting strings like ["build_type=Debug"]
 
     Returns:
         List containing the package ID that matches the profile settings
@@ -219,6 +222,10 @@ def get_package_binaries(package_ref, profile):
         return []
 
     cmd = ['conan', 'graph', 'info', cache_path, '--format=json', '-pr', profile]
+    for opt in (options or []):
+        cmd += ['-o', opt]
+    for s in (settings or []):
+        cmd += ['-s', s]
     output = run_conan_command(cmd)
     if not output:
         return []
@@ -261,7 +268,7 @@ def get_binary_package_path(package_ref, package_id):
     return None
 
 
-def get_dependency_graph(package_ref, package_id, cache_path, profile):
+def get_dependency_graph(package_ref, package_id, cache_path, profile, options=None, settings=None):
     """
     Get the full dependency graph for a package using conan graph info.
 
@@ -270,6 +277,8 @@ def get_dependency_graph(package_ref, package_id, cache_path, profile):
         package_id: Package ID hash
         cache_path: Path to the recipe in cache
         profile: Conan profile name or path (REQUIRED - no default)
+        options: List of option strings like ["zlib:shared=True"]
+        settings: List of setting strings like ["build_type=Debug"]
 
     Returns:
         Dict with graph data, or None if failed
@@ -282,6 +291,10 @@ def get_dependency_graph(package_ref, package_id, cache_path, profile):
 
     # Run graph info from the cache directory where conanfile.py is located
     cmd = ['conan', 'graph', 'info', cache_path, '--format=json', '-pr', profile]
+    for opt in (options or []):
+        cmd += ['-o', opt]
+    for s in (settings or []):
+        cmd += ['-s', s]
 
     output = run_conan_command(cmd)
     if output:
@@ -511,7 +524,7 @@ def upload_package(server_url, recipe_path, binary_path, package_ref, package_id
         return False
 
 
-def upload_single_package(server_url, package_ref, profile, package_id=None):
+def upload_single_package(server_url, package_ref, profile, package_id=None, options=None, settings=None):
     """
     Upload a single package to MISO.
 
@@ -520,6 +533,8 @@ def upload_single_package(server_url, package_ref, profile, package_id=None):
         package_ref: Package reference like "boost/1.81.0"
         profile: Conan profile name or path (REQUIRED - no default)
         package_id: Specific package ID to upload (optional, will be determined from profile if not specified)
+        options: List of Conan option strings like ["zlib:shared=True"]
+        settings: List of Conan setting strings like ["build_type=Debug"]
 
     Returns:
         0 on success, 1 on failure
@@ -572,7 +587,7 @@ def upload_single_package(server_url, package_ref, profile, package_id=None):
         print(f"  Using package_id from dependency graph: {package_id[:8]}...", flush=True)
     else:
         # Main package case: use profile to find the binary
-        package_ids = get_package_binaries(package_ref, profile)
+        package_ids = get_package_binaries(package_ref, profile, options=options, settings=settings)
         if not package_ids:
             print(f"  Error: No binary packages found for {package_ref} with profile {profile}")
 
@@ -611,7 +626,7 @@ def upload_single_package(server_url, package_ref, profile, package_id=None):
 
     # Get dependency graph with profile
     print(f"  Getting dependency graph...", flush=True)
-    dependency_graph = get_dependency_graph(package_ref, package_id, cache_path, profile)
+    dependency_graph = get_dependency_graph(package_ref, package_id, cache_path, profile, options=options, settings=settings)
     if dependency_graph and 'graph' in dependency_graph:
         dep_count = len(dependency_graph['graph'].get('nodes', {})) - 1  # -1 for main package
         if dep_count > 0:
@@ -667,11 +682,17 @@ def cmd_upload(args):
     profile = args.profile
     with_deps = args.with_dependencies if hasattr(args, 'with_dependencies') else False
     force = args.force if hasattr(args, 'force') else False
+    options = args.options if hasattr(args, 'options') and args.options else []
+    settings = args.settings if hasattr(args, 'settings') and args.settings else []
 
     print(f"MISO Upload")
     print(f"{'='*60}")
     print(f"Package: {package_ref}")
     print(f"Profile: {profile}")
+    if options:
+        print(f"Options: {', '.join(options)}")
+    if settings:
+        print(f"Settings: {', '.join(settings)}")
     print(f"Server: {server_url}")
     print(f"Upload dependencies: {with_deps}")
     if force:
@@ -688,7 +709,7 @@ def cmd_upload(args):
 
     # Step 2: Find binary packages
     print("\n2. Finding binary packages...")
-    package_ids = get_package_binaries(package_ref, profile=profile)
+    package_ids = get_package_binaries(package_ref, profile=profile, options=options, settings=settings)
     if not package_ids:
         print(f"Error: No binary packages found for {package_ref} with profile {profile}")
         return 1
@@ -698,7 +719,7 @@ def cmd_upload(args):
 
     # Step 3: Get dependency graph
     print("\n3. Analyzing dependencies...")
-    dependency_graph = get_dependency_graph(package_ref, package_id, cache_path, profile=profile)
+    dependency_graph = get_dependency_graph(package_ref, package_id, cache_path, profile=profile, options=options, settings=settings)
 
     # packages_to_upload is now a list of (package_ref, package_id) tuples
     packages_to_upload = [(package_ref, package_id)]
@@ -795,7 +816,7 @@ def cmd_upload(args):
     for idx, (pkg_ref, pkg_id) in enumerate(missing_packages, 1):
         print(f"\n📦 [{idx}/{total_to_upload}] Uploading {pkg_ref} ({pkg_id[:8]}...)...", flush=True)
 
-        result = upload_single_package(server_url, pkg_ref, profile, package_id=pkg_id)
+        result = upload_single_package(server_url, pkg_ref, profile, package_id=pkg_id, options=options, settings=settings)
 
         if result == 0:
             uploaded_count += 1
@@ -1717,6 +1738,20 @@ def main():
         '--force',
         action='store_true',
         help='Force re-upload even if packages already exist on server'
+    )
+    upload_parser.add_argument(
+        '-o', '--options',
+        action='append',
+        metavar='OPTION',
+        dest='options',
+        help='Conan package options (e.g., -o zlib:shared=True). Can be repeated.'
+    )
+    upload_parser.add_argument(
+        '-s', '--settings',
+        action='append',
+        metavar='SETTING',
+        dest='settings',
+        help='Conan settings overrides (e.g., -s build_type=Debug). Can be repeated.'
     )
 
     # Download command
