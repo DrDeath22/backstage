@@ -55,7 +55,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { stringifyEntityRef } from '@backstage/catalog-model';
 import { conancratesApiRef } from '../api/ConancratesClient';
-import { PackageVersion, BinaryPackage, Dependency, SecurityNote } from '../api/types';
+import { PackageVersion, BinaryPackage, Dependency, SecurityNote, GraphNode, GraphEdge } from '../api/types';
 
 const useStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -122,6 +122,20 @@ const useStyles = makeStyles((theme: Theme) =>
       alignItems: 'center',
       flexWrap: 'wrap' as const,
       marginBottom: theme.spacing(0.5),
+    },
+    graphSvg: {
+      width: '100%',
+      overflowX: 'auto' as const,
+      display: 'block',
+    },
+    graphScrollWrapper: {
+      overflowX: 'auto' as const,
+      overflowY: 'auto' as const,
+      maxHeight: 420,
+      border: `1px solid ${theme.palette.divider}`,
+      borderRadius: 4,
+      marginBottom: theme.spacing(2),
+      backgroundColor: theme.palette.background.default,
     },
     versionHeader: {
       display: 'flex',
@@ -401,6 +415,184 @@ function ReadmeCard({ version }: { version: PackageVersion }) {
   );
 }
 
+// --- Dependency Graph SVG Tree ---
+
+const NODE_W = 140;
+const NODE_H = 44;
+const H_GAP = 20;
+const V_GAP = 60;
+
+interface LayoutNode {
+  node: GraphNode;
+  x: number;
+  y: number;
+}
+
+function computeLayout(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+): { layout: LayoutNode[]; svgWidth: number; svgHeight: number } {
+  if (nodes.length === 0) return { layout: [], svgWidth: 0, svgHeight: 0 };
+
+  // Build adjacency list (parent → children)
+  const children: Record<string, string[]> = {};
+  for (const n of nodes) children[n.id] = [];
+  for (const e of edges) {
+    if (children[e.from]) children[e.from].push(e.to);
+  }
+
+  // Find root (isRoot flag or node with no incoming edges)
+  const hasParent = new Set(edges.map(e => e.to));
+  const rootNode = nodes.find(n => n.isRoot) ?? nodes.find(n => !hasParent.has(n.id)) ?? nodes[0];
+
+  // BFS to assign levels
+  const levels: string[][] = [];
+  const visited = new Set<string>();
+  let queue = [rootNode.id];
+  while (queue.length > 0) {
+    levels.push([...queue]);
+    queue.forEach(id => visited.add(id));
+    const next: string[] = [];
+    for (const id of queue) {
+      for (const cid of (children[id] || [])) {
+        if (!visited.has(cid)) next.push(cid);
+      }
+    }
+    queue = next;
+  }
+  // Add any disconnected nodes at the bottom
+  const disconnected = nodes.filter(n => !visited.has(n.id));
+  if (disconnected.length > 0) levels.push(disconnected.map(n => n.id));
+
+  // Assign positions: center each level horizontally
+  const nodeMap = new Map(nodes.map(n => [n.id, n]));
+  const layout: LayoutNode[] = [];
+  let maxWidth = 0;
+
+  for (let lvl = 0; lvl < levels.length; lvl++) {
+    const ids = levels[lvl];
+    const rowWidth = ids.length * NODE_W + (ids.length - 1) * H_GAP;
+    if (rowWidth > maxWidth) maxWidth = rowWidth;
+    const startX = 0; // we'll center after
+    for (let i = 0; i < ids.length; i++) {
+      const n = nodeMap.get(ids[i]);
+      if (!n) continue;
+      layout.push({
+        node: n,
+        x: startX + i * (NODE_W + H_GAP),
+        y: lvl * (NODE_H + V_GAP),
+      });
+    }
+  }
+
+  // Center each row relative to maxWidth
+  for (let lvl = 0; lvl < levels.length; lvl++) {
+    const ids = levels[lvl];
+    const rowWidth = ids.length * NODE_W + (ids.length - 1) * H_GAP;
+    const offset = (maxWidth - rowWidth) / 2;
+    for (const item of layout) {
+      if (ids.includes(item.node.id)) item.x += offset;
+    }
+  }
+
+  const svgWidth = maxWidth + 40;
+  const svgHeight = levels.length * (NODE_H + V_GAP) + 20;
+  return { layout, svgWidth, svgHeight };
+}
+
+function DepGraphSvg({ nodes, edges }: { nodes: GraphNode[]; edges: GraphEdge[] }) {
+  const theme = { primary: '#1976d2', build: '#f57c00', test: '#757575', root: '#388e3c' };
+  const { layout, svgWidth, svgHeight } = computeLayout(nodes, edges);
+  const posMap = new Map(layout.map(l => [l.node.id, l]));
+  const PAD = 20;
+
+  const nodeColor = (n: GraphNode) => {
+    if (n.isRoot) return theme.root;
+    if (n.context === 'build') return theme.build;
+    if (n.context === 'test') return theme.test;
+    return theme.primary;
+  };
+
+  return (
+    <svg
+      width={svgWidth + PAD * 2}
+      height={svgHeight + PAD}
+      style={{ display: 'block', minWidth: svgWidth + PAD * 2 }}
+    >
+      <g transform={`translate(${PAD}, ${PAD / 2})`}>
+        {/* Edges */}
+        {edges.map((e, i) => {
+          const from = posMap.get(e.from);
+          const to = posMap.get(e.to);
+          if (!from || !to) return null;
+          const x1 = from.x + NODE_W / 2;
+          const y1 = from.y + NODE_H;
+          const x2 = to.x + NODE_W / 2;
+          const y2 = to.y;
+          const cy = (y1 + y2) / 2;
+          return (
+            <path
+              key={i}
+              d={`M${x1},${y1} C${x1},${cy} ${x2},${cy} ${x2},${y2}`}
+              fill="none"
+              stroke="#aaa"
+              strokeWidth={1.5}
+            />
+          );
+        })}
+        {/* Nodes */}
+        {layout.map(({ node, x, y }) => {
+          const color = nodeColor(node);
+          const label = node.name.length > 16 ? `${node.name.slice(0, 14)}…` : node.name;
+          const ver = node.version.length > 12 ? `${node.version.slice(0, 10)}…` : node.version;
+          const href = node.isRoot ? undefined : `/catalog/default/component/${node.name}`;
+          const content = (
+            <g key={node.id} transform={`translate(${x}, ${y})`} style={{ cursor: href ? 'pointer' : 'default' }}>
+              <rect
+                width={NODE_W}
+                height={NODE_H}
+                rx={6}
+                ry={6}
+                fill={color}
+                opacity={0.9}
+              />
+              <text
+                x={NODE_W / 2}
+                y={16}
+                textAnchor="middle"
+                fill="white"
+                fontSize={12}
+                fontWeight="bold"
+                fontFamily="sans-serif"
+              >
+                {label}
+              </text>
+              <text
+                x={NODE_W / 2}
+                y={30}
+                textAnchor="middle"
+                fill="rgba(255,255,255,0.85)"
+                fontSize={10}
+                fontFamily="monospace"
+              >
+                {ver}
+              </text>
+            </g>
+          );
+          if (href) {
+            return (
+              <a key={node.id} href={href}>
+                {content}
+              </a>
+            );
+          }
+          return content;
+        })}
+      </g>
+    </svg>
+  );
+}
+
 // --- DependenciesCard ---
 
 function DependenciesCard({
@@ -412,14 +604,17 @@ function DependenciesCard({
 }) {
   const classes = useStyles();
   const api = useApi(conancratesApiRef);
-  const {
-    value: deps,
-    loading,
-    error,
-  } = useAsync(
+
+  const { value: graph, loading: graphLoading } = useAsync(
+    () => api.getGraph(entityRef, version),
+    [entityRef, version],
+  );
+  const { value: deps, loading: depsLoading } = useAsync(
     () => api.getDependencies(entityRef, version),
     [entityRef, version],
   );
+
+  const loading = graphLoading || depsLoading;
 
   if (loading) {
     return (
@@ -428,9 +623,11 @@ function DependenciesCard({
       </InfoCard>
     );
   }
-  if (error) return null;
 
-  if (!deps || deps.length === 0) {
+  const hasGraph = graph && graph.nodes.length > 1; // >1 means there's more than just the root
+  const hasDeps = deps && deps.length > 0;
+
+  if (!hasGraph && !hasDeps) {
     return (
       <InfoCard title="Dependencies">
         <Typography variant="body2" color="textSecondary">
@@ -440,9 +637,9 @@ function DependenciesCard({
     );
   }
 
-  const requires = deps.filter(d => d.dependency_type === 'requires');
-  const buildRequires = deps.filter(d => d.dependency_type === 'build_requires');
-  const testRequires = deps.filter(d => d.dependency_type === 'test_requires');
+  const requires = (deps || []).filter(d => d.dependency_type === 'requires');
+  const buildRequires = (deps || []).filter(d => d.dependency_type === 'build_requires');
+  const testRequires = (deps || []).filter(d => d.dependency_type === 'test_requires');
 
   const renderDepList = (depList: Dependency[], label: string) => {
     if (depList.length === 0) return null;
@@ -479,11 +676,42 @@ function DependenciesCard({
     );
   };
 
+  const totalDeps = (deps?.length ?? 0);
+
   return (
-    <InfoCard title={`Dependencies (${deps.length})`}>
-      {renderDepList(requires, 'Runtime Dependencies')}
-      {renderDepList(buildRequires, 'Build Dependencies')}
-      {renderDepList(testRequires, 'Test Dependencies')}
+    <InfoCard title={`Dependencies (${totalDeps})`}>
+      {hasGraph && graph && (
+        <Box mb={2}>
+          <div className={classes.graphScrollWrapper}>
+            <DepGraphSvg nodes={graph.nodes} edges={graph.edges} />
+          </div>
+          <Box display="flex" style={{ gap: 16, flexWrap: 'wrap' as const }}>
+            <Box display="flex" alignItems="center" style={{ gap: 4 }}>
+              <svg width={12} height={12}><rect width={12} height={12} rx={2} fill="#388e3c" /></svg>
+              <Typography variant="caption">This package</Typography>
+            </Box>
+            <Box display="flex" alignItems="center" style={{ gap: 4 }}>
+              <svg width={12} height={12}><rect width={12} height={12} rx={2} fill="#1976d2" /></svg>
+              <Typography variant="caption">Runtime dep</Typography>
+            </Box>
+            <Box display="flex" alignItems="center" style={{ gap: 4 }}>
+              <svg width={12} height={12}><rect width={12} height={12} rx={2} fill="#f57c00" /></svg>
+              <Typography variant="caption">Build dep</Typography>
+            </Box>
+            <Box display="flex" alignItems="center" style={{ gap: 4 }}>
+              <svg width={12} height={12}><rect width={12} height={12} rx={2} fill="#757575" /></svg>
+              <Typography variant="caption">Test dep</Typography>
+            </Box>
+          </Box>
+        </Box>
+      )}
+      {hasDeps && (
+        <>
+          {renderDepList(requires, 'Runtime Dependencies')}
+          {renderDepList(buildRequires, 'Build Dependencies')}
+          {renderDepList(testRequires, 'Test Dependencies')}
+        </>
+      )}
     </InfoCard>
   );
 }

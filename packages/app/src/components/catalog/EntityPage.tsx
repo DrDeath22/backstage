@@ -17,9 +17,6 @@ import {
   EntityMembersListCard,
   EntityOwnershipCard,
 } from '@backstage/plugin-org';
-import {
-  EntityCatalogGraphCard,
-} from '@backstage/plugin-catalog-graph';
 
 import { EntityConancratesContent } from '@internal/plugin-conancrates';
 
@@ -51,25 +48,9 @@ const entityWarningContent = (
   </>
 );
 
-const packageOverviewContent = (
-  <Grid container spacing={3} alignItems="stretch">
-    {entityWarningContent}
-    <Grid item md={6}>
-      <EntityAboutCard variant="gridItem" />
-    </Grid>
-    <Grid item md={6} xs={12}>
-      <EntityCatalogGraphCard variant="gridItem" height={400} />
-    </Grid>
-  </Grid>
-);
-
 const conanPackageEntityPage = (
   <EntityLayout>
-    <EntityLayout.Route path="/" title="Overview">
-      {packageOverviewContent}
-    </EntityLayout.Route>
-
-    <EntityLayout.Route path="/registry" title="Registry">
+    <EntityLayout.Route path="/" title="Registry">
       <EntityConancratesContent />
     </EntityLayout.Route>
   </EntityLayout>
@@ -78,7 +59,12 @@ const conanPackageEntityPage = (
 const defaultEntityPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
-      {packageOverviewContent}
+      <Grid container spacing={3} alignItems="stretch">
+        {entityWarningContent}
+        <Grid item xs={12}>
+          <EntityAboutCard variant="gridItem" />
+        </Grid>
+      </Grid>
     </EntityLayout.Route>
   </EntityLayout>
 );

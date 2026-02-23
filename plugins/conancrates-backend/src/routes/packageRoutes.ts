@@ -83,6 +83,64 @@ export function createPackageRoutes(db: DatabaseService): Router {
     },
   );
 
+  // GET /packages/:entityRef/versions/:version/graph - Dependency graph for a version
+  router.get(
+    '/packages/:entityRef/versions/:version/graph',
+    async (
+      req: Request<{ entityRef: string; version: string }>,
+      res: Response,
+    ) => {
+      const entityRef = decodeURIComponent(req.params.entityRef);
+      const version = await db.getVersion(entityRef, req.params.version);
+      if (!version) {
+        res.status(404).json({ error: 'Version not found' });
+        return;
+      }
+      const binaries = await db.listBinaries(version.id);
+      const binary = binaries[0];
+      if (!binary?.dependency_graph) {
+        res.json({ nodes: [], edges: [] });
+        return;
+      }
+
+      const nodes: { id: string; ref: string; name: string; version: string; isRoot: boolean; context: string }[] = [];
+      const edges: { from: string; to: string }[] = [];
+
+      // Conan graph nodes: key is nodeId, edges stored in each node's "dependencies" map
+      const graphDataFull = binary.dependency_graph as {
+        graph?: {
+          nodes?: Record<string, {
+            ref?: string;
+            context?: string;
+            dependencies?: Record<string, unknown>;
+          }>;
+        };
+      };
+      const fullNodes = graphDataFull?.graph?.nodes || {};
+
+      for (const [nodeId, node] of Object.entries(fullNodes)) {
+        const ref = node.ref || '';
+        const parts = ref.split('/');
+        nodes.push({
+          id: nodeId,
+          ref,
+          name: parts[0] || ref,
+          version: parts[1] || '',
+          isRoot: nodeId === '0',
+          context: node.context || 'requires',
+        });
+        // Each node lists its direct dependencies by nodeId
+        if (node.dependencies) {
+          for (const depId of Object.keys(node.dependencies)) {
+            edges.push({ from: nodeId, to: depId });
+          }
+        }
+      }
+
+      res.json({ nodes, edges });
+    },
+  );
+
   // GET /packages/:entityRef/versions/:version/recipe - View recipe content
   router.get(
     '/packages/:entityRef/versions/:version/recipe',

@@ -56,3 +56,22 @@ export interface RegistryStats {
   totalVersions: number;
   totalBinaries: number;
 }
+
+export interface GraphNode {
+  id: string;
+  ref: string;
+  name: string;
+  version: string;
+  isRoot: boolean;
+  context: string; // 'requires' | 'build' | 'test'
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+}
+
+export interface DependencyGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
