@@ -979,29 +979,25 @@ export function EntityConancratesTab() {
   const [deleteDialog, setDeleteDialog] = useState<'version' | 'package' | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Reset selected version whenever the entity changes (component is reused across navigation).
-  const prevEntityRef = React.useRef<string>('');
-  React.useEffect(() => {
-    if (prevEntityRef.current !== entityRef) {
-      prevEntityRef.current = entityRef;
-      setSelectedVersion('');
-    }
-  }, [entityRef]);
-
   const {
     value: versions,
     loading,
     error,
   } = useAsync(() => api.getVersions(entityRef), [entityRef, refreshKey]);
 
+  // Single effect: whenever the entity or versions list changes, pick the right version.
+  // Using a ref to track the last entityRef we selected a version for, so we re-select
+  // whenever the entity changes (even if selectedVersion is already set from a prior entity).
+  const selectedForRef = React.useRef<string>('');
   React.useEffect(() => {
-    if (versions && versions.length > 0 && !selectedVersion) {
-      // Read ?version= param fresh each time (URL changes on SPA navigation).
-      const urlVersion = new URLSearchParams(window.location.search).get('version') ?? '';
-      const match = urlVersion ? versions.find(v => v.version === urlVersion) : undefined;
-      setSelectedVersion(match ? match.version : versions[0].version);
-    }
-  }, [versions, selectedVersion]);
+    if (!versions || versions.length === 0) return;
+    // Re-select whenever entity changes or we haven't selected yet for this entity.
+    if (selectedForRef.current === entityRef && selectedVersion) return;
+    selectedForRef.current = entityRef;
+    const urlVersion = new URLSearchParams(window.location.search).get('version') ?? '';
+    const match = urlVersion ? versions.find(v => v.version === urlVersion) : undefined;
+    setSelectedVersion(match ? match.version : versions[0].version);
+  }, [entityRef, versions, selectedVersion]);
 
   const handleDeleteVersion = useCallback(async () => {
     if (!selectedVersion) return;
