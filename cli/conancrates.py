@@ -344,15 +344,21 @@ def check_package_exists(server_url, package_ref, package_id):
         package_id: Specific package ID hash
 
     Returns:
-        True if this specific binary exists, False otherwise
+        True if this specific binary (name + version + package_id) exists, False otherwise
     """
     try:
+        import urllib.parse
         package_name, version = package_ref.split('/', 1)
-        # Try to access the specific binary download endpoint
-        # This will return 200 if the binary exists, 404 if not
-        check_url = f"{server_url}/api/conancrates/packages/{package_name}/versions/{version}/binaries/{package_id}/download"
-        response = requests.head(check_url)  # Use HEAD to avoid downloading
-        return response.status_code == 200
+        entity_ref = f"component:default/{package_name}"
+        encoded_ref = urllib.parse.quote(entity_ref, safe='')
+        # Check the binaries endpoint for this specific version - this is version-aware
+        check_url = f"{server_url}/api/conancrates/packages/{encoded_ref}/versions/{version}/binaries"
+        response = requests.get(check_url)
+        if response.status_code != 200:
+            return False
+        binaries = response.json()
+        # Look for a binary with matching package_id
+        return any(b.get('package_id') == package_id for b in binaries)
     except Exception:
         return False
 
