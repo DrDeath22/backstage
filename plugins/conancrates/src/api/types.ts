@@ -69,6 +69,7 @@ export interface GraphNode {
 export interface GraphEdge {
   from: string;
   to: string;
+  context?: string; // 'requires' | 'build' | 'test'
 }
 
 export interface DependencyGraph {

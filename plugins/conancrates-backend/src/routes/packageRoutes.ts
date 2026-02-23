@@ -104,36 +104,62 @@ export function createPackageRoutes(db: DatabaseService): Router {
       }
 
       const nodes: { id: string; ref: string; name: string; version: string; isRoot: boolean; context: string }[] = [];
-      const edges: { from: string; to: string }[] = [];
+      const edges: { from: string; to: string; context: string }[] = [];
 
       // Conan graph nodes: key is nodeId, edges stored in each node's "dependencies" map
-      const graphDataFull = binary.dependency_graph as {
+      // dependency_graph is stored as a JSON string in SQLite; parse it if needed
+      let parsedGraph: unknown = binary.dependency_graph;
+      if (typeof parsedGraph === 'string') {
+        try { parsedGraph = JSON.parse(parsedGraph); } catch { parsedGraph = undefined; }
+      }
+      const graphDataFull = parsedGraph as {
         graph?: {
           nodes?: Record<string, {
             ref?: string;
             context?: string;
-            dependencies?: Record<string, unknown>;
+            dependencies?: Record<string, { build?: boolean; test?: boolean }>;
           }>;
         };
       };
       const fullNodes = graphDataFull?.graph?.nodes || {};
 
+      // First pass: collect all nodes
       for (const [nodeId, node] of Object.entries(fullNodes)) {
         const ref = node.ref || '';
         const parts = ref.split('/');
+        const rawVersion = parts[1] || '';
+        // Strip recipe revision hash (e.g. "1.0.0#8f4cf6..." → "1.0.0")
+        const ver = rawVersion.split('#')[0];
         nodes.push({
           id: nodeId,
           ref,
           name: parts[0] || ref,
-          version: parts[1] || '',
+          version: ver,
           isRoot: nodeId === '0',
-          context: node.context || 'requires',
+          context: 'requires', // will be overridden by edge data
         });
-        // Each node lists its direct dependencies by nodeId
+      }
+
+      // Second pass: build edges using dep-level build/test flags
+      // nodeId → context map derived from how parents depend on this node
+      const nodeContextMap: Record<string, string> = {};
+      for (const [nodeId, node] of Object.entries(fullNodes)) {
         if (node.dependencies) {
-          for (const depId of Object.keys(node.dependencies)) {
-            edges.push({ from: nodeId, to: depId });
+          for (const [depId, depInfo] of Object.entries(node.dependencies)) {
+            const edgeContext = depInfo.test ? 'test' : depInfo.build ? 'build' : 'requires';
+            edges.push({ from: nodeId, to: depId, context: edgeContext });
+            // A node is 'build' or 'test' if at least one parent marks it as such
+            if (!nodeContextMap[depId] || edgeContext !== 'requires') {
+              nodeContextMap[depId] = edgeContext;
+            }
           }
+        }
+      }
+
+      // Update node contexts based on edge data
+      for (const node of nodes) {
+        if (!node.isRoot && nodeContextMap[node.id]) {
+          node.context = nodeContextMap[node.id];
         }
       }
 

@@ -306,7 +306,8 @@ export function createUploadRoutes(
             if (nodeId === '0') continue; // skip root node
             if (node.ref) {
               const depName = node.ref.split('/')[0];
-              const depVersion = node.ref.split('/')[1] || '';
+              // Strip recipe revision hash (e.g. "1.0.0#8f4cf6..." → "1.0.0")
+              const depVersion = (node.ref.split('/')[1] || '').split('#')[0];
               if (depName && depName !== packageName) {
                 const depEntityRef = `component:default/${depName}`;
                 const depType = node.context === 'build' ? 'build_requires'
