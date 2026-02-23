@@ -140,15 +140,21 @@ export function createPackageRoutes(db: DatabaseService): Router {
         });
       }
 
-      // Second pass: build edges using dep-level build/test flags
+      // Second pass: build edges, skipping test dependencies entirely.
+      // Test deps are only used at test time and are not consumers of production binaries.
       // nodeId → context map derived from how parents depend on this node
+      const testNodeIds = new Set<string>();
       const nodeContextMap: Record<string, string> = {};
       for (const [nodeId, node] of Object.entries(fullNodes)) {
         if (node.dependencies) {
           for (const [depId, depInfo] of Object.entries(node.dependencies)) {
-            const edgeContext = depInfo.test ? 'test' : depInfo.build ? 'build' : 'requires';
+            if (depInfo.test) {
+              testNodeIds.add(depId);
+              continue; // skip test deps
+            }
+            const edgeContext = depInfo.build ? 'build' : 'requires';
             edges.push({ from: nodeId, to: depId, context: edgeContext });
-            // A node is 'build' or 'test' if at least one parent marks it as such
+            // A node's context is 'build' if any parent marks it as such
             if (!nodeContextMap[depId] || edgeContext !== 'requires') {
               nodeContextMap[depId] = edgeContext;
             }
@@ -156,14 +162,17 @@ export function createPackageRoutes(db: DatabaseService): Router {
         }
       }
 
+      // Remove test-only nodes (nodes that only appear as test deps) from the node list
+      const filteredNodes = nodes.filter(n => !testNodeIds.has(n.id) || n.isRoot);
+
       // Update node contexts based on edge data
-      for (const node of nodes) {
+      for (const node of filteredNodes) {
         if (!node.isRoot && nodeContextMap[node.id]) {
           node.context = nodeContextMap[node.id];
         }
       }
 
-      res.json({ nodes, edges });
+      res.json({ nodes: filteredNodes, edges });
     },
   );
 

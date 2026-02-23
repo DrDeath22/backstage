@@ -465,27 +465,37 @@ function computeLayout(
   const hasParent = new Set(edges.filter(e => validIds.has(e.to)).map(e => e.to));
   const rootNode = nodes.find(n => n.isRoot) ?? nodes.find(n => !hasParent.has(n.id)) ?? nodes[0];
 
-  // Longest-path level assignment (DAG-aware):
-  // Each node is placed at its maximum distance from root, so shared
-  // (diamond) dependencies sink below all their parents and all edges
-  // point strictly downward.
+  // Longest-path level assignment via Kahn's topological sort (DAG-aware):
+  // A node is processed only after ALL its parents are processed, so its
+  // depth is guaranteed to be the true maximum distance from the root.
+  // This correctly places shared (diamond) dependencies below all their parents.
   const depth: Record<string, number> = {};
-  // BFS to visit in topological order (safe for DAGs without cycles)
-  const visited = new Set<string>();
-  const topoOrder: string[] = [];
-  const bfsQueue = [rootNode.id];
+  const inDegree: Record<string, number> = {};
+  const parents: Record<string, string[]> = {};
+  for (const n of nodes) { inDegree[n.id] = 0; parents[n.id] = []; }
+  for (const e of edges) {
+    if (validIds.has(e.from) && validIds.has(e.to)) {
+      inDegree[e.to] = (inDegree[e.to] ?? 0) + 1;
+      parents[e.to].push(e.from);
+    }
+  }
   depth[rootNode.id] = 0;
-  visited.add(rootNode.id);
-  while (bfsQueue.length > 0) {
-    const id = bfsQueue.shift()!;
+  // Seed queue with nodes that have no parents (should just be root)
+  const topoQueue: string[] = nodes.filter(n => inDegree[n.id] === 0).map(n => n.id);
+  const topoOrder: string[] = [];
+  const visited = new Set<string>(topoQueue);
+  while (topoQueue.length > 0) {
+    const id = topoQueue.shift()!;
     topoOrder.push(id);
+    // Each node's depth = max(parent depths) + 1
+    const d = parents[id].reduce((max, pid) => Math.max(max, (depth[pid] ?? 0) + 1), depth[id] ?? 0);
+    depth[id] = d;
     for (const cid of (children[id] || [])) {
-      if (!visited.has(cid)) {
+      inDegree[cid]--;
+      if (inDegree[cid] === 0) {
         visited.add(cid);
-        bfsQueue.push(cid);
+        topoQueue.push(cid);
       }
-      // Update depth to be maximum distance from root
-      depth[cid] = Math.max(depth[cid] ?? 0, (depth[id] ?? 0) + 1);
     }
   }
 
