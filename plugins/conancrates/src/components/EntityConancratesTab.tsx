@@ -974,14 +974,19 @@ export function EntityConancratesTab() {
   const entityRef = stringifyEntityRef(entity);
   const api = useApi(conancratesApiRef);
 
-  // Read ?version= param once at mount — used as the preferred initial version.
-  const [urlVersion] = useState<string>(
-    () => new URLSearchParams(window.location.search).get('version') ?? '',
-  );
   const [selectedVersion, setSelectedVersion] = useState<string>('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteDialog, setDeleteDialog] = useState<'version' | 'package' | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Reset selected version whenever the entity changes (component is reused across navigation).
+  const prevEntityRef = React.useRef<string>('');
+  React.useEffect(() => {
+    if (prevEntityRef.current !== entityRef) {
+      prevEntityRef.current = entityRef;
+      setSelectedVersion('');
+    }
+  }, [entityRef]);
 
   const {
     value: versions,
@@ -991,11 +996,12 @@ export function EntityConancratesTab() {
 
   React.useEffect(() => {
     if (versions && versions.length > 0 && !selectedVersion) {
-      // Prefer the URL param version if it exists in the list, otherwise latest.
+      // Read ?version= param fresh each time (URL changes on SPA navigation).
+      const urlVersion = new URLSearchParams(window.location.search).get('version') ?? '';
       const match = urlVersion ? versions.find(v => v.version === urlVersion) : undefined;
       setSelectedVersion(match ? match.version : versions[0].version);
     }
-  }, [versions, selectedVersion, urlVersion]);
+  }, [versions, selectedVersion]);
 
   const handleDeleteVersion = useCallback(async () => {
     if (!selectedVersion) return;
