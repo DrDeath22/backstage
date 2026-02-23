@@ -8,7 +8,7 @@ import {
 const gettingStartedContent = `
 ## Overview
 
-ConanCrates is a private package registry for C++ Conan packages, built on Backstage. It lets you upload, browse, download, and manage Conan 2 binary packages through a web interface and CLI tool.
+MISO is a private package registry for C++ Conan packages, built on Backstage. It lets you upload, browse, download, and manage Conan 2 binary packages through a web interface and CLI tool.
 
 Each uploaded package is automatically registered in the Backstage catalog as a Component entity, making it discoverable alongside your other software.
 
@@ -25,17 +25,17 @@ Each uploaded package is automatically registered in the Backstage catalog as a 
 
 ## CLI Installation
 
-The ConanCrates CLI is a single Python script. Copy it to your system or install the dependencies:
+The MISO CLI is a single Python script. Copy it to your system or install the dependencies:
 
 \`\`\`bash
 # Install required Python packages
 pip install requests
 
 # Make the script executable (Linux/macOS)
-chmod +x conancrates.py
+chmod +x miso.py
 
 # Or run it directly with Python
-python conancrates.py --help
+python miso.py --help
 \`\`\`
 
 ---
@@ -45,7 +45,7 @@ python conancrates.py --help
 By default, the CLI connects to \`http://localhost:7007\`. To point it at a different server:
 
 \`\`\`bash
-python conancrates.py --server https://your-server.example.com upload ...
+python miso.py --server https://your-server.example.com upload ...
 \`\`\`
 
 ---
@@ -56,16 +56,16 @@ Upload a single package (requires a Conan profile):
 
 \`\`\`bash
 # Upload a specific package
-python conancrates.py upload boost/1.81.0 -pr default
+python miso.py upload boost/1.81.0 -pr default
 
 # Upload with all dependencies
-python conancrates.py upload mylib/1.0.0 -pr default --with-dependencies
+python miso.py upload mylib/1.0.0 -pr default --with-dependencies
 
 # Force re-upload (overwrites existing data)
-python conancrates.py upload mylib/1.0.0 -pr default --force
+python miso.py upload mylib/1.0.0 -pr default --force
 
 # Skip Rust crate generation
-python conancrates.py upload mylib/1.0.0 -pr default --no-rust
+python miso.py upload mylib/1.0.0 -pr default --no-rust
 \`\`\`
 
 ### What gets uploaded
@@ -122,13 +122,13 @@ On the Registry tab, each binary has a **Download** button that downloads the \`
 
 \`\`\`bash
 # Download a package and its dependencies as a ZIP bundle
-python conancrates.py download mylib/1.0.0 -pr default
+python miso.py download mylib/1.0.0 -pr default
 
 # Download to a specific directory
-python conancrates.py download mylib/1.0.0 -pr default -o ./my_packages
+python miso.py download mylib/1.0.0 -pr default -o ./my_packages
 
 # Download Rust crates instead of Conan packages
-python conancrates.py download mylib/1.0.0 -pr default --crates
+python miso.py download mylib/1.0.0 -pr default --crates
 \`\`\`
 
 ---
@@ -146,11 +146,11 @@ Deletions are immediate and trigger a catalog refresh so the entity is removed.
 
 ## Generating Rust Crates
 
-ConanCrates can auto-generate Rust \`-sys\` crates that wrap C++ libraries:
+MISO can auto-generate Rust \`-sys\` crates that wrap C++ libraries:
 
 \`\`\`bash
-python conancrates.py generate-rust-crate mylib/1.0.0 -pr default
-python conancrates.py generate-rust-crate mylib/1.0.0 -pr default -o ./rust_crates
+python miso.py generate-rust-crate mylib/1.0.0 -pr default
+python miso.py generate-rust-crate mylib/1.0.0 -pr default -o ./rust_crates
 \`\`\`
 
 The generated crate includes a \`build.rs\` that links against the C++ library and exposes it for Rust FFI.
@@ -181,7 +181,7 @@ export const GettingStartedPage = () => {
     <Page themeId="documentation">
       <Header
         title="Getting Started"
-        subtitle="How to use ConanCrates"
+        subtitle="How to use MISO"
       />
       <Content>
         <MarkdownContent content={gettingStartedContent} dialect="gfm" />

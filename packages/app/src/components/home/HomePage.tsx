@@ -120,7 +120,7 @@ export const HomePage = () => {
   return (
     <Page themeId="home">
       <Header
-        title="ConanCrates"
+        title="MISO"
         subtitle="Private C++ Package Registry"
       />
       <Content>

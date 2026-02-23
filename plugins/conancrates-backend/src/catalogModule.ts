@@ -10,7 +10,7 @@ import {
 import { Entity } from '@backstage/catalog-model';
 
 /** Singleton reference for manual refresh triggers */
-let providerInstance: ConanCratesEntityProvider | undefined;
+let providerInstance: MISOEntityProvider | undefined;
 
 /** Trigger a manual catalog refresh (called after uploads) */
 export async function triggerCatalogRefresh(): Promise<void> {
@@ -20,10 +20,10 @@ export async function triggerCatalogRefresh(): Promise<void> {
 }
 
 /**
- * Entity provider that fetches package data from the ConanCrates backend API
+ * Entity provider that fetches package data from the MISO backend API
  * and registers them as catalog entities.
  */
-class ConanCratesEntityProvider implements EntityProvider {
+class MISOEntityProvider implements EntityProvider {
   private connection?: EntityProviderConnection;
   private readonly baseUrl: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -202,7 +202,7 @@ class ConanCratesEntityProvider implements EntityProvider {
 
       this.logger.info('Mutation applied successfully');
     } catch (e) {
-      this.logger.error('Failed to refresh ConanCrates catalog entities', {
+      this.logger.error('Failed to refresh MISO catalog entities', {
         error: e instanceof Error ? e.message : String(e),
         stack: e instanceof Error ? e.stack : undefined,
       });
@@ -211,7 +211,7 @@ class ConanCratesEntityProvider implements EntityProvider {
 }
 
 /**
- * Backend module that registers ConanCrates packages as catalog entities.
+ * Backend module that registers MISO packages as catalog entities.
  */
 export const catalogModuleConancrates = createBackendModule({
   pluginId: 'catalog',
@@ -226,11 +226,11 @@ export const catalogModuleConancrates = createBackendModule({
       },
       async init({ catalog, config, logger, scheduler }) {
         logger.info(
-          'Registering ConanCrates entity provider with catalog',
+          'Registering MISO entity provider with catalog',
         );
 
         const baseUrl = config.getString('backend.baseUrl');
-        const provider = new ConanCratesEntityProvider(baseUrl, logger);
+        const provider = new MISOEntityProvider(baseUrl, logger);
         providerInstance = provider;
 
         catalog.addEntityProvider(provider);
@@ -241,7 +241,7 @@ export const catalogModuleConancrates = createBackendModule({
           frequency: { seconds: 30 },
           timeout: { minutes: 2 },
           fn: async () => {
-            logger.info('Refreshing ConanCrates catalog entities');
+            logger.info('Refreshing MISO catalog entities');
             await provider.refresh();
           },
         });

@@ -7,7 +7,7 @@ import { DatabaseService } from './service/DatabaseService';
 import { createStorageProvider } from './service/StorageService';
 import * as path from 'path';
 
-/** The ConanCrates backend plugin */
+/** The MISO backend plugin */
 export const conancrates = createBackendPlugin({
   pluginId: 'conancrates',
   register(env) {
@@ -19,7 +19,7 @@ export const conancrates = createBackendPlugin({
         logger: coreServices.logger,
       },
       async init({ httpRouter, database, config, logger }) {
-        logger.info('Initializing ConanCrates backend plugin');
+        logger.info('Initializing MISO backend plugin');
 
         // Get Knex client and run migrations
         const knex = await database.getClient();
@@ -47,7 +47,7 @@ export const conancrates = createBackendPlugin({
           allow: 'unauthenticated',
         });
 
-        logger.info('ConanCrates backend plugin initialized');
+        logger.info('MISO backend plugin initialized');
       },
     });
   },

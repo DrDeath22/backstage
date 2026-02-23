@@ -971,7 +971,7 @@ export function EntityConancratesTab() {
   if (error) return <ResponseErrorPanel error={error} />;
   if (!versions || versions.length === 0) {
     return (
-      <InfoCard title="ConanCrates">
+      <InfoCard title="MISO">
         <Typography variant="body1">
           No versions uploaded yet for this package.
         </Typography>
