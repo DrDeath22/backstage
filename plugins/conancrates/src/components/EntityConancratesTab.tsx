@@ -598,7 +598,7 @@ function DepGraphSvg({ nodes, edges }: { nodes: GraphNode[]; edges: GraphEdge[] 
           const color = nodeColor(node);
           const label = node.name.length > 16 ? `${node.name.slice(0, 14)}…` : node.name;
           const ver = node.version.length > 12 ? `${node.version.slice(0, 10)}…` : node.version;
-          const href = node.isRoot ? undefined : `/catalog/default/component/${node.name}`;
+          const href = node.isRoot ? undefined : `/catalog/default/component/${node.name}?version=${encodeURIComponent(node.version)}`;
           const content = (
             <g key={node.id} transform={`translate(${x}, ${y})`} style={{ cursor: href ? 'pointer' : 'default' }}>
               <rect
@@ -987,7 +987,10 @@ export function EntityConancratesTab() {
 
   React.useEffect(() => {
     if (versions && versions.length > 0 && !selectedVersion) {
-      setSelectedVersion(versions[0].version);
+      const params = new URLSearchParams(window.location.search);
+      const versionParam = params.get('version');
+      const match = versionParam && versions.find(v => v.version === versionParam);
+      setSelectedVersion(match ? versionParam : versions[0].version);
     }
   }, [versions, selectedVersion]);
 
