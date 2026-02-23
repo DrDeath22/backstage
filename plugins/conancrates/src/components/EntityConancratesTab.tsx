@@ -110,7 +110,7 @@ const useStyles = makeStyles((theme: Theme) =>
       fontFamily: 'monospace',
     },
     readmeContainer: {
-      maxHeight: 600,
+      maxHeight: 560,
       overflowY: 'auto' as const,
     },
     depChip: {
@@ -925,25 +925,23 @@ function VersionDetail({
 
   return (
     <Grid container spacing={3}>
-      {/* Package Header - full width */}
-      <Grid item xs={12}>
+      {/* Row 1: Package Info (wider) + Security (narrower) */}
+      <Grid item xs={12} md={8}>
         <PackageHeader version={version} />
       </Grid>
-
-      {/* Two-column layout: Security + Dependencies */}
-      <Grid item xs={12} md={6}>
+      <Grid item xs={12} md={4}>
         <SecurityCard version={version} binaries={binaries} />
       </Grid>
-      <Grid item xs={12} md={6}>
+
+      {/* Row 2: Dependencies + README side by side, equal height */}
+      <Grid item xs={12} md={6} style={{ display: 'flex', flexDirection: 'column' }}>
         <DependenciesCard entityRef={entityRef} version={version.version} />
       </Grid>
-
-      {/* README - full width */}
-      <Grid item xs={12}>
+      <Grid item xs={12} md={6} style={{ display: 'flex', flexDirection: 'column' }}>
         <ReadmeCard version={version} />
       </Grid>
 
-      {/* Binaries - full width */}
+      {/* Row 3: Binaries - full width */}
       <Grid item xs={12}>
         <InfoCard title="Binaries">
           {loading && <Progress />}
@@ -958,7 +956,7 @@ function VersionDetail({
         </InfoCard>
       </Grid>
 
-      {/* Recipe - full width (accordion) */}
+      {/* Row 4: Recipe accordion - full width */}
       <Grid item xs={12}>
         <RecipeViewer entityRef={entityRef} version={version.version} />
       </Grid>
