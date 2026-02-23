@@ -394,6 +394,9 @@ def is_release_version(version):
 def extract_dependencies_from_graph(dependency_graph):
     """
     Extract list of dependency package refs and their package_ids from a dependency graph.
+    Only includes dependencies whose binary is present in the local Conan cache.
+    Deduplicates by package_ref so the same package is not listed multiple times
+    (e.g., when it appears under different node IDs due to multiple consumers).
 
     Args:
         dependency_graph: Dependency graph dict from conan graph info
@@ -402,10 +405,10 @@ def extract_dependencies_from_graph(dependency_graph):
         List of tuples: [(package_ref, package_id), ...]
         e.g., [("zlib/1.2.13", "abc123"), ("boost/1.81.0", "def456")]
     """
-    dependencies = []
     if not dependency_graph:
-        return dependencies
+        return []
 
+    seen_refs = {}  # package_ref -> package_id (first seen wins)
     nodes = dependency_graph.get('graph', {}).get('nodes', {})
     for node_id, node in nodes.items():
         # Skip root node (the package itself)
@@ -414,13 +417,26 @@ def extract_dependencies_from_graph(dependency_graph):
 
         ref = node.get('ref', '')
         package_id = node.get('package_id', None)
+        binary_status = node.get('binary', None)
+
+        # Only include packages that are actually in the local cache.
+        # binary=Cache   → binary is in local cache, ready to upload
+        # binary=Skip    → Conan skipped building this (e.g. header-only), but
+        #                  the binary may still be addressable via conan cache path
+        # binary=Missing → not in cache, would need building first
+        # binary=Build   → needs to be built from source
+        # binary=Download→ would be fetched from a remote
+        # binary=None    → root package node
+        if binary_status not in ('Cache', 'Skip'):
+            continue
 
         if '/' in ref and package_id:
             # Remove revision hash if present (e.g., "boost/1.81.0#hash" -> "boost/1.81.0")
             package_ref = ref.split('#')[0]
-            dependencies.append((package_ref, package_id))
+            if package_ref not in seen_refs:
+                seen_refs[package_ref] = package_id
 
-    return dependencies
+    return list(seen_refs.items())
 
 
 def upload_package(server_url, recipe_path, binary_path, package_ref, package_id=None, dependency_graph=None, rust_crate_path=None, readme_path=None):
@@ -725,11 +741,14 @@ def cmd_upload(args):
     packages_to_upload = [(package_ref, package_id)]
 
     if with_deps and dependency_graph:
-        # Extract dependencies from graph (returns list of tuples)
+        # Extract dependencies from graph (returns list of tuples, already deduplicated by ref)
         dependencies = extract_dependencies_from_graph(dependency_graph)
         if dependencies:
-            print(f"  Found {len(dependencies)} dependencies")
-            packages_to_upload.extend(dependencies)
+            # Only add deps not already in the upload list (avoids duplicating the main package)
+            existing_refs = {ref for ref, _ in packages_to_upload}
+            new_deps = [(ref, pid) for ref, pid in dependencies if ref not in existing_refs]
+            print(f"  Found {len(new_deps)} dependencies")
+            packages_to_upload.extend(new_deps)
         else:
             print(f"  No dependencies found")
     else:

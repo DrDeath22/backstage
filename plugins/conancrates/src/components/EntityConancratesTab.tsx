@@ -429,40 +429,84 @@ interface LayoutNode {
 }
 
 function computeLayout(
-  nodes: GraphNode[],
-  edges: GraphEdge[],
+  rawNodes: GraphNode[],
+  rawEdges: GraphEdge[],
 ): { layout: LayoutNode[]; svgWidth: number; svgHeight: number } {
-  if (nodes.length === 0) return { layout: [], svgWidth: 0, svgHeight: 0 };
+  if (rawNodes.length === 0) return { layout: [], svgWidth: 0, svgHeight: 0 };
 
-  // Build adjacency list (parent → children)
+  // Deduplicate nodes by id (keep first occurrence)
+  const seenIds = new Set<string>();
+  const nodes = rawNodes.filter(n => {
+    if (seenIds.has(n.id)) return false;
+    seenIds.add(n.id);
+    return true;
+  });
+
+  // Deduplicate edges (same from+to pair)
+  const seenEdges = new Set<string>();
+  const edges = rawEdges.filter(e => {
+    const key = `${e.from}->${e.to}`;
+    if (seenEdges.has(key)) return false;
+    seenEdges.add(key);
+    return true;
+  });
+
+  // Build adjacency list (parent → children) using only valid node IDs
+  const validIds = new Set(nodes.map(n => n.id));
   const children: Record<string, string[]> = {};
   for (const n of nodes) children[n.id] = [];
   for (const e of edges) {
-    if (children[e.from]) children[e.from].push(e.to);
+    if (validIds.has(e.from) && validIds.has(e.to)) {
+      children[e.from].push(e.to);
+    }
   }
 
   // Find root (isRoot flag or node with no incoming edges)
-  const hasParent = new Set(edges.map(e => e.to));
+  const hasParent = new Set(edges.filter(e => validIds.has(e.to)).map(e => e.to));
   const rootNode = nodes.find(n => n.isRoot) ?? nodes.find(n => !hasParent.has(n.id)) ?? nodes[0];
 
-  // BFS to assign levels
-  const levels: string[][] = [];
+  // Longest-path level assignment (DAG-aware):
+  // Each node is placed at its maximum distance from root, so shared
+  // (diamond) dependencies sink below all their parents and all edges
+  // point strictly downward.
+  const depth: Record<string, number> = {};
+  // BFS to visit in topological order (safe for DAGs without cycles)
   const visited = new Set<string>();
-  let queue = [rootNode.id];
-  while (queue.length > 0) {
-    levels.push([...queue]);
-    queue.forEach(id => visited.add(id));
-    const next: string[] = [];
-    for (const id of queue) {
-      for (const cid of (children[id] || [])) {
-        if (!visited.has(cid)) next.push(cid);
+  const topoOrder: string[] = [];
+  const bfsQueue = [rootNode.id];
+  depth[rootNode.id] = 0;
+  visited.add(rootNode.id);
+  while (bfsQueue.length > 0) {
+    const id = bfsQueue.shift()!;
+    topoOrder.push(id);
+    for (const cid of (children[id] || [])) {
+      if (!visited.has(cid)) {
+        visited.add(cid);
+        bfsQueue.push(cid);
       }
+      // Update depth to be maximum distance from root
+      depth[cid] = Math.max(depth[cid] ?? 0, (depth[id] ?? 0) + 1);
     }
-    queue = next;
   }
-  // Add any disconnected nodes at the bottom
+
+  // Group nodes by level
+  const levelMap: Record<number, string[]> = {};
+  for (const id of topoOrder) {
+    const lvl = depth[id] ?? 0;
+    if (!levelMap[lvl]) levelMap[lvl] = [];
+    levelMap[lvl].push(id);
+  }
+  // Any disconnected nodes go at the bottom
   const disconnected = nodes.filter(n => !visited.has(n.id));
-  if (disconnected.length > 0) levels.push(disconnected.map(n => n.id));
+  if (disconnected.length > 0) {
+    const maxLvl = Math.max(0, ...Object.keys(levelMap).map(Number));
+    levelMap[maxLvl + 1] = disconnected.map(n => n.id);
+  }
+
+  const levels = Object.keys(levelMap)
+    .map(Number)
+    .sort((a, b) => a - b)
+    .map(lvl => levelMap[lvl]);
 
   // Assign positions: center each level horizontally
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
@@ -473,13 +517,12 @@ function computeLayout(
     const ids = levels[lvl];
     const rowWidth = ids.length * NODE_W + (ids.length - 1) * H_GAP;
     if (rowWidth > maxWidth) maxWidth = rowWidth;
-    const startX = 0; // we'll center after
     for (let i = 0; i < ids.length; i++) {
       const n = nodeMap.get(ids[i]);
       if (!n) continue;
       layout.push({
         node: n,
-        x: startX + i * (NODE_W + H_GAP),
+        x: i * (NODE_W + H_GAP),
         y: lvl * (NODE_H + V_GAP),
       });
     }
