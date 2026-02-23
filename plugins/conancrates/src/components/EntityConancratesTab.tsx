@@ -925,23 +925,25 @@ function VersionDetail({
 
   return (
     <Grid container spacing={3}>
-      {/* Row 1: Package Info (wider) + Security (narrower) */}
-      <Grid item xs={12} md={8}>
+      {/* Row 1: Package Information - full width */}
+      <Grid item xs={12}>
         <PackageHeader version={version} />
+      </Grid>
+
+      {/* Row 2: README - full width */}
+      <Grid item xs={12}>
+        <ReadmeCard version={version} />
+      </Grid>
+
+      {/* Row 3: Dependencies (wide) + Security (narrower) */}
+      <Grid item xs={12} md={8}>
+        <DependenciesCard entityRef={entityRef} version={version.version} />
       </Grid>
       <Grid item xs={12} md={4}>
         <SecurityCard version={version} binaries={binaries} />
       </Grid>
 
-      {/* Row 2: Dependencies + README side by side, equal height */}
-      <Grid item xs={12} md={6} style={{ display: 'flex', flexDirection: 'column' }}>
-        <DependenciesCard entityRef={entityRef} version={version.version} />
-      </Grid>
-      <Grid item xs={12} md={6} style={{ display: 'flex', flexDirection: 'column' }}>
-        <ReadmeCard version={version} />
-      </Grid>
-
-      {/* Row 3: Binaries - full width */}
+      {/* Row 4: Binaries - full width (table too wide for sidebar) */}
       <Grid item xs={12}>
         <InfoCard title="Binaries">
           {loading && <Progress />}
@@ -956,7 +958,7 @@ function VersionDetail({
         </InfoCard>
       </Grid>
 
-      {/* Row 4: Recipe accordion - full width */}
+      {/* Row 5: Recipe accordion - full width */}
       <Grid item xs={12}>
         <RecipeViewer entityRef={entityRef} version={version.version} />
       </Grid>
