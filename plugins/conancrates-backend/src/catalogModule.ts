@@ -11,12 +11,19 @@ import { Entity } from '@backstage/catalog-model';
 
 /** Singleton reference for manual refresh triggers */
 let providerInstance: MISOEntityProvider | undefined;
+let refreshDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-/** Trigger a manual catalog refresh (called after uploads) */
+/** Trigger a manual catalog refresh (debounced — waits 5s after last upload) */
 export async function triggerCatalogRefresh(): Promise<void> {
-  if (providerInstance) {
-    await providerInstance.refresh();
+  if (refreshDebounceTimer) {
+    clearTimeout(refreshDebounceTimer);
   }
+  refreshDebounceTimer = setTimeout(async () => {
+    refreshDebounceTimer = undefined;
+    if (providerInstance) {
+      await providerInstance.refresh();
+    }
+  }, 5000);
 }
 
 /**
