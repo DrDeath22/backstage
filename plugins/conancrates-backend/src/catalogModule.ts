@@ -247,6 +247,7 @@ export const catalogModuleConancrates = createBackendModule({
           id: 'conancrates-entity-refresh',
           frequency: { seconds: 30 },
           timeout: { minutes: 2 },
+          initialDelay: { seconds: 15 },
           fn: async () => {
             logger.info('Refreshing MISO catalog entities');
             await provider.refresh();
