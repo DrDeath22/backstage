@@ -245,7 +245,7 @@ export const catalogModuleConancrates = createBackendModule({
         // Schedule periodic refresh to pick up newly uploaded packages
         await scheduler.scheduleTask({
           id: 'conancrates-entity-refresh',
-          frequency: { minutes: 10 },
+          frequency: { seconds: 30 },
           timeout: { minutes: 2 },
           fn: async () => {
             logger.info('Refreshing MISO catalog entities');

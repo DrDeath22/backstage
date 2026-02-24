@@ -792,13 +792,23 @@ def cmd_upload(args):
         missing_packages = list(packages_to_upload)
     else:
         print("\n5. Checking server for existing packages...")
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        def _check(item):
+            pkg_ref, pkg_id = item
+            return (pkg_ref, pkg_id, check_package_exists(server_url, pkg_ref, pkg_id))
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(_check, item): item for item in packages_to_upload}
+            results = {}
+            for future in as_completed(futures):
+                pkg_ref, pkg_id, exists = future.result()
+                results[(pkg_ref, pkg_id)] = exists
+        # Preserve original order
         for pkg_ref, pkg_id in packages_to_upload:
-            print(f"  Checking {pkg_ref} ({pkg_id[:8]}...)...", end=' ')
-            if check_package_exists(server_url, pkg_ref, pkg_id):
-                print("EXISTS")
+            exists = results[(pkg_ref, pkg_id)]
+            print(f"  {pkg_ref} ({pkg_id[:8]}...): {'EXISTS' if exists else 'NOT FOUND'}")
+            if exists:
                 existing_packages.append((pkg_ref, pkg_id))
             else:
-                print("NOT FOUND")
                 missing_packages.append((pkg_ref, pkg_id))
 
     # Step 6: Show upload plan and ask for confirmation
