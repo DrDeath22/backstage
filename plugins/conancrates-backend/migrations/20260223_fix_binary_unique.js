@@ -25,7 +25,7 @@ exports.up = async function up(knex) {
         .references('id')
         .inTable('conancrates_package_versions')
         .onDelete('CASCADE');
-      table.string('package_id', 64).notNullable().index();
+      table.string('package_id', 64).notNullable();
       table.string('os', 50).defaultTo('');
       table.string('arch', 50).defaultTo('');
       table.string('compiler', 50).defaultTo('');
