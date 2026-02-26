@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useAsync } from 'react-use';
 import {
   Typography,
@@ -27,6 +27,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  CircularProgress,
   Link as MuiLink,
   makeStyles,
   createStyles,
@@ -598,7 +599,7 @@ function DepGraphSvg({ nodes, edges }: { nodes: GraphNode[]; edges: GraphEdge[] 
           const color = nodeColor(node);
           const label = node.name.length > 16 ? `${node.name.slice(0, 14)}…` : node.name;
           const ver = node.version.length > 12 ? `${node.version.slice(0, 10)}…` : node.version;
-          const href = node.isRoot ? undefined : `/catalog/default/component/${node.name}`;
+          const href = node.isRoot ? undefined : `/catalog/default/component/${node.name}?version=${encodeURIComponent(node.version)}`;
           const content = (
             <g key={node.id} transform={`translate(${x}, ${y})`} style={{ cursor: href ? 'pointer' : 'default' }}>
               <rect
@@ -904,6 +905,116 @@ function RecipeViewer({
   );
 }
 
+// --- ApiDocsCard ---
+
+function ApiDocsCard({
+  entityRef,
+  version,
+}: {
+  entityRef: string;
+  version: string;
+}) {
+  const api = useApi(conancratesApiRef);
+  const [docsStatus, setDocsStatus] = useState<{ status: string; error: string }>({ status: '', error: '' });
+  const [loading, setLoading] = useState(true);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchStatus = async () => {
+      try {
+        const result = await api.getApiDocsStatus(entityRef, version);
+        if (!cancelled) {
+          setDocsStatus(result);
+          setLoading(false);
+          // Stop polling once we have a terminal status
+          if (result.status !== 'generating' && intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+        }
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchStatus();
+    intervalRef.current = setInterval(fetchStatus, 5000);
+
+    return () => {
+      cancelled = true;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [api, entityRef, version]);
+
+  if (loading) {
+    return (
+      <InfoCard title="API Documentation">
+        <Progress />
+      </InfoCard>
+    );
+  }
+
+  if (!docsStatus.status || docsStatus.status === 'none') {
+    return null; // No docs attempted yet
+  }
+
+  if (docsStatus.status === 'generating') {
+    return (
+      <InfoCard title="API Documentation">
+        <Box display="flex" alignItems="center" style={{ gap: 12 }}>
+          <CircularProgress size={20} />
+          <Typography variant="body2">
+            Generating API documentation from headers... This may take a minute.
+          </Typography>
+        </Box>
+      </InfoCard>
+    );
+  }
+
+  if (docsStatus.status === 'no_headers') {
+    return (
+      <InfoCard title="API Documentation">
+        <Typography variant="body2" color="textSecondary">
+          No public headers (.h, .hpp) found in this package. API documentation is only generated for packages that include header files.
+        </Typography>
+      </InfoCard>
+    );
+  }
+
+  if (docsStatus.status === 'failed') {
+    return (
+      <InfoCard title="API Documentation">
+        <Typography variant="body2" color="error">
+          Documentation generation failed: {docsStatus.error || 'Unknown error'}
+        </Typography>
+      </InfoCard>
+    );
+  }
+
+  // status === 'ready'
+  const docsUrl = api.getApiDocsUrl(entityRef, version);
+
+  return (
+    <InfoCard title="API Documentation">
+      <iframe
+        src={docsUrl}
+        title="API Documentation"
+        style={{
+          width: '100%',
+          height: 600,
+          border: 'none',
+          borderRadius: 4,
+        }}
+      />
+    </InfoCard>
+  );
+}
+
 // --- VersionDetail ---
 
 function VersionDetail({
@@ -933,6 +1044,11 @@ function VersionDetail({
       {/* Row 2: README - full width */}
       <Grid item xs={12}>
         <ReadmeCard version={version} />
+      </Grid>
+
+      {/* Row 2.5: API Documentation - full width */}
+      <Grid item xs={12}>
+        <ApiDocsCard entityRef={entityRef} version={version.version} />
       </Grid>
 
       {/* Row 3: Dependencies (wide) + Security (narrower) */}
@@ -974,6 +1090,9 @@ export function EntityConancratesTab() {
   const entityRef = stringifyEntityRef(entity);
   const api = useApi(conancratesApiRef);
 
+  // Track which entityRef the current selectedVersion belongs to.
+  // When entityRef changes, treat selectedVersion as stale.
+  const versionEntityRef = React.useRef<string>('');
   const [selectedVersion, setSelectedVersion] = useState<string>('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [deleteDialog, setDeleteDialog] = useState<'version' | 'package' | null>(null);
@@ -986,10 +1105,14 @@ export function EntityConancratesTab() {
   } = useAsync(() => api.getVersions(entityRef), [entityRef, refreshKey]);
 
   React.useEffect(() => {
-    if (versions && versions.length > 0 && !selectedVersion) {
-      setSelectedVersion(versions[0].version);
-    }
-  }, [versions, selectedVersion]);
+    if (!versions || versions.length === 0) return;
+    // Select a version if we don't have one, or if we're on a different entity than last time.
+    if (selectedVersion && versionEntityRef.current === entityRef) return;
+    versionEntityRef.current = entityRef;
+    const urlVersion = new URLSearchParams(window.location.search).get('version') ?? '';
+    const match = urlVersion ? versions.find(v => v.version === urlVersion) : undefined;
+    setSelectedVersion(match ? match.version : versions[0].version);
+  }, [entityRef, versions, selectedVersion]);
 
   const handleDeleteVersion = useCallback(async () => {
     if (!selectedVersion) return;

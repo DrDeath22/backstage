@@ -16,6 +16,11 @@ export interface ConancratesApi {
   getGraph(entityRef: string, version: string): Promise<DependencyGraph>;
   deleteVersion(entityRef: string, version: string): Promise<void>;
   deletePackage(entityRef: string): Promise<void>;
+  getApiDocsStatus(
+    entityRef: string,
+    version: string,
+  ): Promise<{ status: string; error: string }>;
+  getApiDocsUrl(entityRef: string, version: string): string;
   getDownloadUrl(
     entityRef: string,
     version: string,
@@ -132,6 +137,21 @@ export class ConancratesClient implements ConancratesApi {
     const res = await this.fetchApi.fetch(url, { method: 'DELETE' });
     if (!res.ok)
       throw new Error(`Failed to delete package: ${res.statusText}`);
+  }
+
+  async getApiDocsStatus(
+    entityRef: string,
+    version: string,
+  ): Promise<{ status: string; error: string }> {
+    const url = `${await this.baseUrl()}/packages/${this.encodeRef(entityRef)}/versions/${version}/api-docs/status`;
+    const res = await this.fetchApi.fetch(url);
+    if (!res.ok)
+      throw new Error(`Failed to fetch docs status: ${res.statusText}`);
+    return res.json();
+  }
+
+  getApiDocsUrl(entityRef: string, version: string): string {
+    return `/api/conancrates/packages/${this.encodeRef(entityRef)}/versions/${version}/api-docs/`;
   }
 
   getDownloadUrl(

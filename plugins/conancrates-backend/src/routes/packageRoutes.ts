@@ -1,9 +1,11 @@
 import { Router, Request, Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
 import { DatabaseService } from '../service/DatabaseService';
 import { triggerCatalogRefresh } from '../catalogModule';
 
 /** Routes for browsing packages, versions, and binaries */
-export function createPackageRoutes(db: DatabaseService): Router {
+export function createPackageRoutes(db: DatabaseService, docsRootPath?: string): Router {
   const router = Router();
 
   // GET /stats - Registry statistics
@@ -202,6 +204,12 @@ export function createPackageRoutes(db: DatabaseService): Router {
     ) => {
       try {
         const entityRef = decodeURIComponent(req.params.entityRef);
+        // Get version before deleting so we can clean up docs
+        const version = await db.getVersion(entityRef, req.params.version);
+        if (version?.api_docs_path && docsRootPath) {
+          const docsDir = path.resolve(docsRootPath, version.api_docs_path);
+          fs.promises.rm(docsDir, { recursive: true, force: true }).catch(() => {});
+        }
         const deleted = await db.deleteVersion(entityRef, req.params.version);
         if (!deleted) {
           res.status(404).json({ error: 'Version not found' });
@@ -222,6 +230,16 @@ export function createPackageRoutes(db: DatabaseService): Router {
     async (req: Request<{ entityRef: string }>, res: Response) => {
       try {
         const entityRef = decodeURIComponent(req.params.entityRef);
+        // Clean up docs for all versions before deleting
+        if (docsRootPath) {
+          const versions = await db.listVersions(entityRef);
+          for (const v of versions) {
+            if (v.api_docs_path) {
+              const docsDir = path.resolve(docsRootPath, v.api_docs_path);
+              fs.promises.rm(docsDir, { recursive: true, force: true }).catch(() => {});
+            }
+          }
+        }
         const count = await db.deletePackage(entityRef);
         if (count === 0) {
           res.status(404).json({ error: 'Package not found' });

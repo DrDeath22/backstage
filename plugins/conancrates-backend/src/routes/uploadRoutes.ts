@@ -4,6 +4,7 @@ import * as crypto from 'crypto';
 import * as zlib from 'zlib';
 import { DatabaseService } from '../service/DatabaseService';
 import { StorageProvider } from '../service/StorageService';
+import { DocGenerationService } from '../service/DocGenerationService';
 import { triggerCatalogRefresh } from '../catalogModule';
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -156,6 +157,7 @@ function extractConaninfo(buffer: Buffer): {
 export function createUploadRoutes(
   db: DatabaseService,
   storage: StorageProvider,
+  docGen?: DocGenerationService,
 ): Router {
   const router = Router();
 
@@ -340,6 +342,28 @@ export function createUploadRoutes(
 
         // Trigger catalog refresh in background so the new package appears immediately
         triggerCatalogRefresh().catch(() => {});
+
+        // Trigger API doc generation in background if not already done
+        if (
+          docGen &&
+          (!pkgVersion.api_docs_status ||
+            pkgVersion.api_docs_status === '' ||
+            pkgVersion.api_docs_status === 'failed')
+        ) {
+          docGen
+            .generateDocs({
+              packageName,
+              version,
+              description: parsedMeta.description,
+              license: parsedMeta.license,
+              versionId: pkgVersion.id,
+              binaryBuffer: Buffer.from(binaryFile.buffer),
+              docsRootPath: storage.getRootPath(),
+            })
+            .catch(err2 => {
+              console.error('Background doc generation failed:', err2);
+            });
+        }
       } catch (err) {
         console.error('Upload error:', err);
         res.status(500).json({ status: 'error', message: String(err) });

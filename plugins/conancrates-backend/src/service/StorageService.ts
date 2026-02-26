@@ -10,6 +10,7 @@ export interface StorageProvider {
   readStream(bucket: string, key: string): Promise<Readable>;
   delete(bucket: string, key: string): Promise<void>;
   exists(bucket: string, key: string): Promise<boolean>;
+  getRootPath(): string;
 }
 
 /** Local filesystem storage for development */
@@ -69,6 +70,10 @@ export class LocalStorageProvider implements StorageProvider {
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
+  }
+
+  getRootPath(): string {
+    return this.rootPath;
   }
 
   async exists(bucket: string, key: string): Promise<boolean> {

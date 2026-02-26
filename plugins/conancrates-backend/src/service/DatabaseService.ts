@@ -202,6 +202,23 @@ export class DatabaseService {
     }
   }
 
+  // --- API Docs ---
+
+  async updateDocsStatus(
+    versionId: number,
+    status: string,
+    docsPath: string,
+    error: string,
+  ): Promise<void> {
+    await this.db('conancrates_package_versions')
+      .where({ id: versionId })
+      .update({
+        api_docs_status: status,
+        api_docs_path: docsPath,
+        api_docs_error: error,
+      });
+  }
+
   // --- Stats ---
 
   async getStats(): Promise<RegistryStats> {

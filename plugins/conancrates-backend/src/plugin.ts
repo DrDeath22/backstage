@@ -5,6 +5,7 @@ import {
 import { createRouter } from './router';
 import { DatabaseService } from './service/DatabaseService';
 import { createStorageProvider } from './service/StorageService';
+import { DocGenerationService } from './service/DocGenerationService';
 import * as path from 'path';
 
 /** The MISO backend plugin */
@@ -36,9 +37,10 @@ export const conancrates = createBackendPlugin({
         // Create services
         const db = new DatabaseService(knex);
         const storage = createStorageProvider(config);
+        const docGen = new DocGenerationService(db, storage.getRootPath(), logger);
 
         // Create and mount router
-        const router = await createRouter({ database: db, storage });
+        const router = await createRouter({ database: db, storage, docGeneration: docGen });
         httpRouter.use(router as any);
 
         // Allow unauthenticated access for CLI uploads and downloads

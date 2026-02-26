@@ -17,6 +17,9 @@ export interface PackageVersion {
   topics: string;
   readme_content: string;
   security_notes: string;
+  api_docs_path: string;
+  api_docs_status: string;
+  api_docs_error: string;
 }
 
 export interface SecurityNote {
